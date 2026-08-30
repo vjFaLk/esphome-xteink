@@ -17,7 +17,7 @@ class Xteink : public PollingComponent {
   void setup() override;
   void update() override;
   void dump_config() override;
-  /// Runs right before ESP deep sleep: panel to sleep, power latches held.
+  /// Runs right before ESP deep sleep: holds the board's power-latch pins.
   void on_powerdown() override;
   float get_setup_priority() const override { return setup_priority::BUS + 10; }
 
@@ -27,8 +27,6 @@ class Xteink : public PollingComponent {
   /// Returns true once per GT911 home-key press (X4 Pro); latched so a slower
   /// consumer cannot miss the one-update edge the SDK reports.
   bool take_home_press();
-  /// Put the panel controller into deep sleep (once; a wake resets everything).
-  void sleep_display();
 
  protected:
   EInkDisplay display_{BoardConfig::ACTIVE.display.sclk, BoardConfig::ACTIVE.display.mosi,
@@ -37,7 +35,6 @@ class Xteink : public PollingComponent {
   InputManager input_;
   BatteryMonitor battery_;
   bool home_pressed_{false};
-  bool display_slept_{false};
 };
 
 }  // namespace xteink

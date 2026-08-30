@@ -85,8 +85,8 @@ the stock bootloader and partition table, as with any ESP32 board.
 - `it.set_refresh_mode(n)` picks the waveform for *this* refresh. The first refresh after boot is
   always at least a half refresh; later ones can be fast (partial/diff) updates.
 - `it.update_count` counts refreshes, handy for "full refresh every N updates".
-- On `deep_sleep.enter` the hub puts the panel controller to sleep and holds the board's power
-  latch pins through the sleep by itself; nothing to add to your YAML.
+- `deep_sleep` needs nothing extra in your YAML: the hub holds the board's power-latch pins
+  through the sleep, and the panel keeps its last image unpowered.
 - Buttons are named by position, not function; what they *do* is your YAML's business.
 - Migrating from `ngxson/esphome-component-xteink`: rename the platforms (`xteink_edp`,
   `xteink_input`, `xteink_battery` → `xteink`), rename `button_up` / `button_down` /

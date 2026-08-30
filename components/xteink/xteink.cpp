@@ -41,15 +41,12 @@ bool Xteink::take_home_press() {
   return pressed;
 }
 
-void Xteink::sleep_display() {
-  if (this->display_slept_)
-    return;
-  this->display_.deepSleep();
-  this->display_slept_ = true;
-}
-
 void Xteink::on_powerdown() {
-  this->sleep_display();
+  // Deliberately NOT calling display_.deepSleep() here: the SSD1677 power-off
+  // sequence busy-waits on BUSY with a 30 s ceiling, which on the X4 outran the
+  // 5 s task watchdog and rebooted the device instead of sleeping it. The panel
+  // keeps its image unpowered anyway, and a wake re-initialises it.
+  //
   // holdPowerRails() drove the board's power-latch pins at boot but armed no
   // hold, and deep sleep releases an unheld pad. On the X4 that pin (GPIO13)
   // gates the battery MOSFET: left floating it can droop and reset the chip,
