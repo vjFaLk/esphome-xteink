@@ -3,6 +3,7 @@
 #include "esphome/core/log.h"
 
 #include <XteinkDetect.h>
+#include <driver/gpio.h>
 
 namespace esphome {
 namespace xteink {
@@ -38,6 +39,33 @@ bool Xteink::take_home_press() {
   bool pressed = this->home_pressed_;
   this->home_pressed_ = false;
   return pressed;
+}
+
+void Xteink::sleep_display() {
+  if (this->display_slept_)
+    return;
+  this->display_.deepSleep();
+  this->display_slept_ = true;
+}
+
+void Xteink::on_powerdown() {
+  this->sleep_display();
+  // holdPowerRails() drove the board's power-latch pins at boot but armed no
+  // hold, and deep sleep releases an unheld pad. On the X4 that pin (GPIO13)
+  // gates the battery MOSFET: left floating it can droop and reset the chip,
+  // which shows up as the device "waking" right after going to sleep. Hold the
+  // latches at their current level for the duration of the sleep, as
+  // CrossPoint and the SDK's PowerManager do.
+  bool held = false;
+  for (const int8_t pin : {BoardConfig::ACTIVE.power.latch0, BoardConfig::ACTIVE.power.latch1}) {
+    if (pin < 0)
+      continue;
+    gpio_hold_en(static_cast<gpio_num_t>(pin));
+    held = true;
+  }
+  if (held) {
+    gpio_deep_sleep_hold_en();
+  }
 }
 
 void Xteink::dump_config() {

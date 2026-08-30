@@ -17,8 +17,9 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_parent(Xteink *parent) { this->parent_ = parent; }
   void set_writer(xteink_writer_t &&writer) { this->writer_local_ = writer; }
   void set_refresh_mode(int mode) { this->refresh_mode_ = static_cast<RefreshMode>(mode); }
-  /// Put the panel controller into deep sleep (do this before ESP deep sleep).
-  void sleep() { this->parent_->display().deepSleep(); }
+  /// Put the panel controller into deep sleep. Done automatically before ESP
+  /// deep sleep; call it yourself only for a software power-off without sleep.
+  void sleep() { this->parent_->sleep_display(); }
 
   display::DisplayType get_display_type() override { return display::DisplayType::DISPLAY_TYPE_BINARY; }
   int get_width_internal() override { return this->parent_->display().getDisplayWidth(); }
