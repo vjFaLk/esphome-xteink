@@ -1,0 +1,11 @@
+# Xteink X3: ESP32-C3, 16 MB flash (same board as the X4, 792x528 panel).
+#   packages:
+#     board: github://vjFaLk/esphome-xteink/packages/x3.yaml
+esp32:
+  variant: esp32c3
+  flash_size: 16MB
+  framework:
+    type: arduino
+
+xteink:
+  model: x3

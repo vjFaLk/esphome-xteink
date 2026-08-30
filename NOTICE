@@ -1,0 +1,13 @@
+esphome-xteink
+
+The ESPHome glue in components/xteink/*.py, *.h, *.cpp is MIT licensed (see LICENSE).
+
+components/xteink/sdk/libs is an unmodified, sparse copy of the FreeInk SDK
+(https://github.com/Free-Ink/freeink-sdk, MIT) at the commit recorded in
+components/xteink/sdk/SDK_COMMIT. Its own LICENSE and NOTICE are kept alongside
+it. FreeInk is itself derived from the OpenX4 E-Paper Community SDK
+(https://github.com/open-x4-epaper/community-sdk, MIT); the SSD1677 driver and
+panel waveforms originate with CidVonHighwind and that community.
+
+The first ESPHome integration of these drivers was ngxson/esphome-component-xteink
+(MIT), whose display/buttons/battery YAML shape this project keeps compatible.

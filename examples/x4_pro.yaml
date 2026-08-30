@@ -1,0 +1,54 @@
+esphome:
+  name: xteink-x4-pro
+
+packages:
+  board: !include ../packages/x4_pro.yaml
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+wifi:
+  ssid: example
+  password: example-password
+
+font:
+  - file: "gfonts://Roboto"
+    id: roboto_32
+    size: 32
+
+display:
+  - platform: xteink
+    id: epd
+    update_interval: 60s
+    lambda: |-
+      it.print(it.get_width() / 2, it.get_height() / 2, id(roboto_32), TextAlign::CENTER, "Hello X4 Pro");
+      it.set_refresh_mode(2);
+
+binary_sensor:
+  - platform: xteink
+    up:
+      name: Up
+    down:
+      name: Down
+    power:
+      name: Power
+    home:
+      name: Home
+
+sensor:
+  - platform: xteink
+    battery_level:
+      name: Battery
+
+light:
+  - platform: xteink
+    name: Frontlight
+
+touchscreen:
+  - platform: xteink
+    on_touch:
+      - logger.log:
+          format: "touch %d,%d"
+          args: [touch.x, touch.y]

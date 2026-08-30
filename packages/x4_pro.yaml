@@ -1,0 +1,21 @@
+# Xteink X4 Pro: ESP32-S3, 16 MB flash, 8 MB PSRAM, USB Serial/JTAG console.
+#   packages:
+#     board: github://vjFaLk/esphome-xteink/packages/x4_pro.yaml
+esp32:
+  variant: esp32s3
+  board: esp32-s3-devkitc-1
+  flash_size: 16MB
+  framework:
+    type: arduino
+
+esphome:
+  platformio_options:
+    # Same flash/PSRAM wiring crosspoint-reader ships for this board.
+    board_build.flash_mode: dio
+    board_build.arduino.memory_type: dio_opi
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+
+xteink:
+  model: x4_pro

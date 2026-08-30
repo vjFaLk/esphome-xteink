@@ -1,0 +1,53 @@
+esphome:
+  name: xteink-x3
+
+packages:
+  board: !include ../packages/x3.yaml
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+logger:
+
+wifi:
+  ssid: example
+  password: example-password
+
+font:
+  - file: "gfonts://Roboto"
+    id: roboto_32
+    size: 32
+
+display:
+  - platform: xteink
+    id: epd
+    update_interval: 60s
+    lambda: |-
+      it.print(it.get_width() / 2, it.get_height() / 2, id(roboto_32), TextAlign::CENTER, "Hello Xteink");
+      it.set_refresh_mode(2);  // 0 full, 1 half, 2 fast (first frame is always half)
+
+binary_sensor:
+  - platform: xteink
+    button_1:
+      name: Button 1
+    button_2:
+      name: Button 2
+    button_3:
+      name: Button 3
+    button_4:
+      name: Button 4
+    up:
+      name: Up
+    down:
+      name: Down
+    power:
+      name: Power
+
+sensor:
+  - platform: xteink
+    battery_level:
+      name: Battery
+    battery_voltage:
+      name: Battery voltage

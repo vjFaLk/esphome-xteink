@@ -1,0 +1,7 @@
+{
+  "name": "Logging",
+  "version": "1.0.0",
+  "description": "esphome-xteink shim: routes the FreeInk SDK's LOG_* macros to ESP_LOG.",
+  "platforms": "espressif32",
+  "frameworks": ["arduino"]
+}

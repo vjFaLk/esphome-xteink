@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example: [x4, x3, x4_pro]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            examples/.esphome
+          key: pio-${{ matrix.example }}-${{ hashFiles('components/xteink/sdk/SDK_COMMIT') }}
+      - run: pip install esphome
+      - run: esphome compile examples/${{ matrix.example }}.yaml
+
+  sdk-in-sync:
+    # components/xteink/sdk/libs must be a byte-identical copy of freeink-sdk at SDK_COMMIT.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/sync-sdk.sh "$(cat components/xteink/sdk/SDK_COMMIT)"
+      - run: git diff --exit-code --stat
