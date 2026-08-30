@@ -106,14 +106,17 @@ components/xteink/
   sdk/                        sparse copy of freeink-sdk (6 libs) + a 10-line Logging.h shim
 ```
 
-At codegen time `__init__.py` copies `sdk/` into the PlatformIO project (`<build>/lib/xteink-sdk`)
-and declares every SDK library via `lib_deps = Name=symlink://lib/xteink-sdk/...`, exactly how
-CrossPoint consumes the SDK. Each library's own `library.json` drives its build; nothing in
-`sdk/libs` is edited (CI fails if it is).
+At codegen time `__init__.py` merges the six libraries' `include/` and `src/` trees into one
+PlatformIO library at `<build>/lib/xteink-sdk` and declares it with
+`cg.add_library("xteink-sdk", None, "file:///…")`. That single-library shape is deliberate: the
+SDK libs `#include` each other, and neither PlatformIO with ESPHome's `lib_ldf_mode = off`
+(ESPHome ≤ 2026.7) nor ESPHome ≥ 2026.8's library-to-ESP-IDF-component converter links local
+libraries to each other. Nothing in `sdk/libs` is edited (CI fails if it is); the merge is
+redone whenever `sdk/` changes.
 
-Two ESPHome facts explain the shape: external components never clone git submodules, and only
-files directly inside the component folder are compiled — so a vendored copy plus `lib_deps`
-is the only route that works for `github://` users without extra setup.
+Two ESPHome facts explain the rest of the shape: external components never clone git
+submodules, and only files directly inside the component folder are compiled — so a vendored
+copy plus `add_library` is the only route that works for `github://` users without extra setup.
 
 ## Bumping the SDK
 

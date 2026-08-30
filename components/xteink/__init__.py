@@ -6,6 +6,7 @@ PlatformIO lib_dep, so the SDK's own library.json files drive the build.
 """
 
 import hashlib
+import json
 import shutil
 from pathlib import Path
 
@@ -29,18 +30,16 @@ MODELS = {
 }
 
 SDK_DIR = Path(__file__).parent / "sdk"
-# lib_deps name -> path inside sdk/. Names are what the SDK #includes expect.
-# Order matters: with lib_ldf_mode=off a library only sees the include dirs of
-# libraries listed before it, so header-only deps go first.
-SDK_LIBS = {
-    "Logging": "shim/Logging",
-    "BoardConfig": "libs/hardware/BoardConfig",
-    "EInkDisplay": "libs/display/FreeInkDisplay",
-    "InputManager": "libs/hardware/InputManager",
-    "BatteryMonitor": "libs/hardware/BatteryMonitor",
-    "XteinkDetect": "libs/hardware/XteinkDetect",
-    "FrontlightManager": "libs/hardware/FrontlightManager",
-}
+# SDK libraries (paths inside sdk/) that get merged into one PlatformIO library.
+SDK_LIBS = [
+    "libs/hardware/BoardConfig",
+    "libs/display/FreeInkDisplay",
+    "libs/hardware/InputManager",
+    "libs/hardware/BatteryMonitor",
+    "libs/hardware/XteinkDetect",
+    "libs/hardware/FrontlightManager",
+    "shim/Logging",
+]
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -103,8 +102,12 @@ def FILTER_SOURCE_FILES() -> list[str]:
     return excluded
 
 
+# Bump when _vendor_sdk() changes how it lays out the merged library.
+_VENDOR_LAYOUT = "merged-v1"
+
+
 def _sdk_fingerprint() -> str:
-    h = hashlib.sha1()
+    h = hashlib.sha1(_VENDOR_LAYOUT.encode())
     for f in sorted(SDK_DIR.rglob("*")):
         if f.is_file():
             h.update(str(f.relative_to(SDK_DIR)).encode())
@@ -112,17 +115,43 @@ def _sdk_fingerprint() -> str:
     return h.hexdigest()
 
 
-def _vendor_sdk() -> None:
-    """Copy sdk/ into the PlatformIO project; redo it only when its content changes."""
+def _vendor_sdk() -> Path:
+    """Merge the SDK libs into one library at <build>/lib/xteink-sdk.
+
+    The SDK libs #include each other (<BoardConfig.h> everywhere), and neither
+    PlatformIO with lib_ldf_mode=off nor ESPHome >= 2026.8's library-to-IDF-
+    component converter links local libraries to each other. Merging their
+    include/ and src/ trees into a single library sidesteps that entirely
+    (file names are unique across the libs). Redone only when sdk/ changes.
+    """
     dst = CORE.relative_build_path("lib", "xteink-sdk")
     fingerprint = _sdk_fingerprint()
     stamp = dst / ".fingerprint"
     if stamp.is_file() and stamp.read_text() == fingerprint:
-        return
+        return dst
     if dst.exists():
         rmtree(dst)
-    shutil.copytree(SDK_DIR, dst)
+    # PlatformIO copies file:// libraries into .piolibdeps; drop those copies too.
+    libdeps = CORE.relative_build_path(".piolibdeps")
+    if libdeps.exists():
+        rmtree(libdeps)
+    for lib in SDK_LIBS:
+        for sub in ("include", "src"):
+            if (SDK_DIR / lib / sub).is_dir():
+                shutil.copytree(SDK_DIR / lib / sub, dst / sub, dirs_exist_ok=True)
+    (dst / "library.json").write_text(
+        json.dumps(
+            {
+                "name": "xteink-sdk",
+                "version": "0.0.0+" + (SDK_DIR / "SDK_COMMIT").read_text().strip()[:12],
+                "description": "FreeInk SDK subset merged by esphome-xteink",
+                "platforms": "espressif32",
+                "frameworks": ["arduino"],
+            }
+        )
+    )
     stamp.write_text(fingerprint)
+    return dst
 
 
 async def to_code(config):
@@ -130,9 +159,9 @@ async def to_code(config):
     # One 48 KB framebuffer; the panel controller's RAM holds the previous frame.
     cg.add_build_flag("-DEINK_DISPLAY_SINGLE_BUFFER_MODE=1")
 
-    _vendor_sdk()
-    for name, rel in SDK_LIBS.items():
-        cg.add_library(name, None, f"symlink://lib/xteink-sdk/{rel}")
+    # file:///abs/path is understood by PlatformIO (ESPHome <= 2026.7, copied into
+    # .piolibdeps) and by ESPHome >= 2026.8's own library-to-IDF-component converter.
+    cg.add_library("xteink-sdk", None, _vendor_sdk().resolve().as_uri())
     # esp32 builds with lib_ldf_mode=off, so the SDK's Arduino deps must be listed too.
     cg.add_library("SPI", None)
     cg.add_library("Wire", None)
