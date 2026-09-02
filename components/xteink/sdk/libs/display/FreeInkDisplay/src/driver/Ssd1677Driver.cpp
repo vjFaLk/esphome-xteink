@@ -343,15 +343,8 @@ void Ssd1677Driver::refresh(EpdBus& bus, RefreshMode mode, bool turnOff, bool as
     // not, so 0xCC is correct in both states. The production driver marks power OFF
     // after this pass; mirror that so the next refresh re-enables the rails.
     displayMode = 0xCC;
-    // Only mark the screen off when the activation actually powered it down. A
-    // custom-LUT/AA pass with turnOff==false leaves the rails ON (0xCC keeps
-    // CLOCK/ANALOG enabled); flipping the flag false here desyncs it from the
-    // real rail state and lets deepSleep() skip the booster-off sequence,
-    // leaving the charge-pump biased while PR #3215 holds the master rail up.
-    if (turnOff) {
-      displayMode |= 0x03;
-      _isScreenOn = false;
-    }
+    if (turnOff) displayMode |= 0x03;
+    _isScreenOn = false;
   } else {  // Fast
     displayMode |= 0x1C;
   }
@@ -376,11 +369,7 @@ void Ssd1677Driver::powerOn(EpdBus& bus) {
 }
 
 void Ssd1677Driver::powerOffController(EpdBus& bus) {
-  // Always park: re-issuing the border/analog-off sequence on an already-off
-  // panel is harmless, and this guarantees the booster is off before DSLP even
-  // if _isScreenOn drifted out of sync (see the AA-pass desync above). This
-  // driver is ActiveHigh (Ssd1677Driver.h), whose waitBusy() has a 30 s ceiling
-  // (EpdBus.cpp:225), so an off panel cannot hang here.
+  if (!_isScreenOn) return;
   bus.cmd(CMD_BORDER_WAVEFORM);
   bus.data(_cfg.borderWaveformInit);  // X4 Pro: 0x80
   bus.cmd(CMD_DISPLAY_UPDATE_CTRL2);

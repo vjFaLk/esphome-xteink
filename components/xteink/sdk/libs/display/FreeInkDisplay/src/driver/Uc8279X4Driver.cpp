@@ -396,12 +396,11 @@ void Uc8279X4Driver::requestResync(uint8_t settlePasses) {
 void Uc8279X4Driver::skipInitialResync() { _needFullClear = false; }
 
 void Uc8279X4Driver::deepSleep(EpdBus& bus) {
-  // Always park before DSLP (see Uc8179Driver::deepSleep for the full
-  // rationale). This driver is also UcIdleHigh (Uc8279X4Driver.h) with a
-  // no-timeout waitBusy(), so only wait when the panel was actually on.
-  bus.cmd(CMD_POWER_OFF);
-  if (_isScreenOn) bus.waitBusy(" 8279x4 power-down");
-  _isScreenOn = false;
+  if (_isScreenOn) {
+    bus.cmd(CMD_POWER_OFF);
+    bus.waitBusy(" 8279x4 power-down");
+    _isScreenOn = false;
+  }
   bus.cmd(CMD_DEEP_SLEEP);
   bus.data(0xA5);
 }

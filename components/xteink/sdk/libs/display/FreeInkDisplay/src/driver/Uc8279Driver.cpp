@@ -212,12 +212,11 @@ void Uc8279Driver::skipInitialResync() {
 }
 
 void Uc8279Driver::deepSleep(EpdBus& bus) {
-  // Always park before DSLP (see Uc8179Driver::deepSleep for the full
-  // rationale). This driver is X3TwoPhase (Uc8279Driver.h) which DOES have a
-  // bounded busy wait, but only wait when the panel was actually on.
-  bus.cmd(CMD_POWER_OFF);
-  if (_isScreenOn) bus.waitBusy(" 8279 power-down");
-  _isScreenOn = false;
+  if (_isScreenOn) {
+    bus.cmd(CMD_POWER_OFF);
+    bus.waitBusy(" 8279 power-down");
+    _isScreenOn = false;
+  }
   bus.cmd(CMD_DEEP_SLEEP);
   bus.data(0xA5);
 }

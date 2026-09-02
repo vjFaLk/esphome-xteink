@@ -72,39 +72,43 @@
 #ifndef FREEINK_DEVICE_EEGO_A4
 #define FREEINK_DEVICE_EEGO_A4 0
 #endif
+#ifndef FREEINK_DEVICE_ONEPAGE
+#define FREEINK_DEVICE_ONEPAGE 0
+#endif
 
 // --- 2) Coherence: exactly one MCU family, at least one device ---------------
 #if !(FREEINK_DEVICE_X4 || FREEINK_DEVICE_X3 || FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_M5 || \
       FREEINK_DEVICE_MURPHY || FREEINK_DEVICE_DELINK || FREEINK_DEVICE_LILYGO || FREEINK_DEVICE_M5PAPER ||               \
       FREEINK_DEVICE_STICKY || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_PAPERS3 || FREEINK_DEVICE_MURPHY_M4 ||         \
-      FREEINK_DEVICE_EEGO_A4)
+      FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_ONEPAGE)
 #error \
-    "FreeInk: no device selected. Pass at least one -DFREEINK_DEVICE_<NAME> (X4, X3, X4PRO, X4CLASSIC, M5, MURPHY, DELINK, LILYGO, M5PAPER, STICKY, PAPERMONO, PAPERS3, MURPHY_M4, EEGO_A4) in your build env — see platformio.sample.ini."
+    "FreeInk: no device selected. Pass at least one -DFREEINK_DEVICE_<NAME> (X4, X3, X4PRO, X4CLASSIC, M5, MURPHY, DELINK, LILYGO, M5PAPER, STICKY, PAPERMONO, PAPERS3, MURPHY_M4, EEGO_A4, ONEPAGE) in your build env — see platformio.sample.ini."
 #endif
 // Each device belongs to one MCU family; a binary targets exactly one. X3/X4 are
 // ESP32-C3; M5 PaperColor/Murphy/de-link/LilyGo are ESP32-S3; M5Paper v1.1 is the
-// classic ESP32 (ESP32-D0WDQ6). The three families differ in deep-sleep wakeup,
-// SPI peripheral count, and toolchain, so they never share a binary.
+// classic ESP32 (ESP32-D0WDQ6); OnePage is ESP32-C61. The families differ in
+// deep-sleep wakeup, SPI peripheral count, and toolchain, so they never share a binary.
 #define FREEINK_MCU_C3 (FREEINK_DEVICE_X3 || FREEINK_DEVICE_X4)
+#define FREEINK_MCU_C61 (FREEINK_DEVICE_ONEPAGE)
 #define FREEINK_MCU_S3                                                                                    \
   (FREEINK_DEVICE_M5 || FREEINK_DEVICE_MURPHY || FREEINK_DEVICE_DELINK || FREEINK_DEVICE_LILYGO ||        \
    FREEINK_DEVICE_STICKY || FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO ||  \
    FREEINK_DEVICE_PAPERS3 || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_EEGO_A4)
 #define FREEINK_MCU_ESP32 (FREEINK_DEVICE_M5PAPER)
-#if (FREEINK_MCU_C3 + FREEINK_MCU_S3 + FREEINK_MCU_ESP32) != 1
+#if (FREEINK_MCU_C3 + FREEINK_MCU_C61 + FREEINK_MCU_S3 + FREEINK_MCU_ESP32) != 1
 #error \
-    "FreeInk: all selected devices must share one MCU family — ESP32-C3 (X3/X4), ESP32-S3 (M5/Murphy/de-link/LilyGo/Sticky/X4Pro), or ESP32 (M5Paper). Build one binary per family."
+    "FreeInk: all selected devices must share one MCU family — ESP32-C3 (X3/X4), ESP32-C61 (OnePage), ESP32-S3 (M5/Murphy/de-link/LilyGo/Sticky/X4Pro), or ESP32 (M5Paper). Build one binary per family."
 #endif
 
 // --- 3) Derive panel drivers from the device set -----------------------------
 // Sticky reuses SSD1677: its 800x480 panel rides a 24-pin FPC whose GDR/RESE/BS1
 // + dual VSH1/VSH2 + external VGH/VGL/VSL/VCOM charge pump is the SSD1677
-// application circuit (same controller + resolution as X4 / de-link).
+// application circuit (same controller + resolution as X4 / de-link / OnePage).
 // X4 Pro is a distinct ESP32-S3 device (NOT the C3 X4): its 800x480 panel may
 // use SSD1677, UC8179, or UC8279, recovered from OEM firmware and hardware
 // references — see docs/xteink-x4pro-support.md.
 #if FREEINK_DEVICE_X4 || FREEINK_DEVICE_DELINK || FREEINK_DEVICE_STICKY || FREEINK_DEVICE_X4PRO || \
-    FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_MURPHY_M4
+    FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_ONEPAGE
 #define FREEINK_DRIVER_SSD1677 1
 #else
 #define FREEINK_DRIVER_SSD1677 0
@@ -376,6 +380,7 @@ enum class Board : uint8_t {
   PaperMono,
   M5PaperS3,  // ESP32-S3 sibling of M5Paper v1.1: same ED047TC1 glass, no IT8951 — raw parallel via LovyanGFX
   EegoA4,     // EEGO Reader A4: ESP32-S3, UC8279C 768x552 SPI panel, GSLX680 touch, PCF8563 RTC
+  OnePage,    // OnePage: ESP32-C61, SSD1677 800x480 SPI panel, 4-key ADC ladder + 3 side keys
 };
 
 // How the board reports button presses.
@@ -386,6 +391,7 @@ enum class InputStyle : uint8_t {
   DigitalConfirmPowerHold,  // confirm click, power hold on a shared GPIO
   DigitalFiveKey,           // 3 physical GPIO keys + synthesized events (Murphy M3)
   DigitalTwoButton,         // short up/down; holds synthesize back/confirm/power
+  OnePageAdcLadder,         // OnePage: 4 front keys on GPIO4 ADC ladder + 3 side GPIO keys
 };
 
 // Panel controller silicon. Drivers are selected from this at begin().
@@ -498,6 +504,7 @@ struct InputPins {
   int8_t down;
   int8_t power;
   bool powerActiveHigh;  // true = pressed reads HIGH (INPUT_PULLDOWN); false = active-LOW (INPUT_PULLUP)
+  int8_t adcLadderPin = PIN_UNASSIGNED;  // ADC pin for single resistor ladder (e.g. OnePage GPIO4)
 };
 
 // Capacitive touch panel description (TouchController::None disables it).
@@ -1669,7 +1676,8 @@ constexpr BoardProfile XTEINK_X4_CLASSIC = {
     //     the physical Confirm/Back keys act as Up/Down.
     //   * Power=GPIO3. (GPIO4 is a non-interrupt input, role PENDING — not a button.)
     // {back, confirm, left, right, up, down, power, powerActiveHigh}
-    {9, 8, 2, 5, 0, 7, 3, false},
+    // back=GPIO9, confirm=GPIO8, left=GPIO5, right=GPIO2 (all confirmed on hardware).
+    {9, 8, 5, 2, 0, 7, 3, false},
     PIN_UNASSIGNED,  // batteryAdc: uses the CW2017 gauge, not an ADC pin
     21,              // batteryChargeStatus: GPIO21 STAT (carried from X4 Pro), active-HIGH (tail)
     2.0f,
@@ -1697,6 +1705,44 @@ constexpr BoardProfile XTEINK_X4_CLASSIC = {
     {9, 7, 3, 7},  // bezel insets: carried from X4 Pro (same glass), pending measurement
     true};  // batteryChargeStatusActiveHigh: GPIO21 STAT driven HIGH while charging
 
+constexpr BoardProfile ONEPAGE = {
+    Board::OnePage,
+    "onepage",
+    InputStyle::OnePageAdcLadder,
+    DisplayController::SSD1677,
+    800,
+    480,
+    // Display SPI: SCLK 22, MOSI 23, CS 25, DC 8, RST 27, BUSY 29, powerEnable PIN_UNASSIGNED
+    {22, 23, 25, 8, 27, 29, PIN_UNASSIGNED},
+    20000000,  // displaySpiHz: 20MHz
+    // MicroSD (shared SPI bus): SCLK 22, MISO 24, MOSI 23, CS 26, powerEnable 27
+    {22, 24, 23, 26, 27, false, 20000000, true},
+    // Input: 4-key front ADC ladder on GPIO4 + 3 side GPIO keys (UP=6, DOWN=9, POWER=2)
+    // {back, confirm, left, right, up, down, power, powerActiveHigh, adcLadderPin}
+    {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 6, 9, 2, false, 4},
+    5,               // batteryAdc: GPIO5 (ADC1_CH3)
+    11,              // batteryChargeStatus: GPIO11 (LM66200 ST open-drain, low=USB present)
+    2.0f,            // batteryDividerMultiplier
+    11,              // usbDetect: GPIO11 (LM66200 ST)
+    NO_TOUCH,        // touch: no touch
+    NO_FRONTLIGHT,   // frontlight: none
+    NO_AUDIO,        // audio: none
+    NO_LEDS,         // leds: none
+    NO_FLIP,         // orientation
+    NO_SDMMC,        // sdmmc: none (SPI)
+    NO_GAUGE,        // batteryGauge: none (ADC)
+    NO_MIC,          // mic
+    NO_SENSORS,      // sensors
+    1.0f,            // uiScale: 1.0
+    // Power: latch0, latch1, chargeEnable (GPIO10, active-high)
+    {PIN_UNASSIGNED, PIN_UNASSIGNED, 10, true},
+    0,               // displayControllerVariant
+    {0, 0, 0, 0},    // viewableInsets: full 800x480 panel frame
+    false};          // batteryChargeStatusActiveHigh: false (low = USB present)
+
+static_assert(ONEPAGE.displayWidth / 8 * ONEPAGE.displayHeight == 48000,
+              "OnePage framebuffer must be 48,000 bytes (800/8 x 480)");
+
 // Largest framebuffer (bytes) over the devices compiled into this build, derived
 // from the profiles above. The display facade sizes its static framebuffer to
 // this so one binary holds whichever panel is runtime-selected; a single-device
@@ -1719,12 +1765,15 @@ constexpr uint32_t MAX_FRAMEBUFFER_BYTES = cmax(
                    FREEINK_DEVICE_PAPERMONO ? panelBytes(PAPER_MONO) : 0u),
               cmax(cmax(FREEINK_DEVICE_PAPERS3 ? panelBytes(M5PAPER_S3) : 0u,
                         FREEINK_DEVICE_MURPHY_M4 ? panelBytes(MURPHY_M4) : 0u),
-                   FREEINK_DEVICE_EEGO_A4 ? panelBytes(EEGO_A4) : 0u))));
+                   cmax(FREEINK_DEVICE_EEGO_A4 ? panelBytes(EEGO_A4) : 0u,
+                        FREEINK_DEVICE_ONEPAGE ? panelBytes(ONEPAGE) : 0u)))));
 
 // Compile-time default device — the profile ACTIVE starts as. With a single
 // device in the build this is the only device; with several same-MCU devices it
 // is the boot default until the consumer calls selectDevice().
-#if FREEINK_DEVICE_PAPERMONO
+#if FREEINK_DEVICE_ONEPAGE
+constexpr BoardProfile DEFAULT_DEVICE = ONEPAGE;
+#elif FREEINK_DEVICE_PAPERMONO
 constexpr BoardProfile DEFAULT_DEVICE = PAPER_MONO;
 #elif FREEINK_DEVICE_EEGO_A4
 constexpr BoardProfile DEFAULT_DEVICE = EEGO_A4;
@@ -1840,6 +1889,11 @@ inline bool selectDevice(Board which) {
       ACTIVE = EEGO_A4;
       break;
 #endif
+#if FREEINK_DEVICE_ONEPAGE
+    case Board::OnePage:
+      ACTIVE = ONEPAGE;
+      break;
+#endif
     default:
       return false;
   }
@@ -1861,6 +1915,7 @@ inline bool isX4Pro() { return ACTIVE.board == Board::XteinkX4Pro; }
 inline bool isX4Classic() { return ACTIVE.board == Board::XteinkX4Classic; }
 inline bool isPaperMono() { return ACTIVE.board == Board::PaperMono; }
 inline bool isEegoA4() { return ACTIVE.board == Board::EegoA4; }
+inline bool isOnePage() { return ACTIVE.board == Board::OnePage; }
 inline bool hasTouch() { return ACTIVE.touch.controller != TouchController::None; }
 inline bool hasHomeKey() { return ACTIVE.touch.hasHomeKey; }
 inline bool hasPwmFrontlight() { return ACTIVE.frontlight.gpio != PIN_UNASSIGNED || ACTIVE.frontlight.viaPm1Pwm; }

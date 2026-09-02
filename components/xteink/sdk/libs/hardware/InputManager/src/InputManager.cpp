@@ -99,6 +99,21 @@ void InputManager::begin() {
     return;
   }
 
+  if (BoardConfig::ACTIVE.inputStyle == BoardConfig::InputStyle::OnePageAdcLadder) {
+    if (BoardConfig::ACTIVE.input.adcLadderPin >= 0) {
+      pinMode(BoardConfig::ACTIVE.input.adcLadderPin, INPUT);
+    }
+    analogSetAttenuation(ADC_11db);
+    if (BoardConfig::ACTIVE.input.up >= 0) pinMode(BoardConfig::ACTIVE.input.up, INPUT_PULLUP);
+    if (BoardConfig::ACTIVE.input.down >= 0) pinMode(BoardConfig::ACTIVE.input.down, INPUT_PULLUP);
+    if (BoardConfig::ACTIVE.input.power >= 0) {
+      pinMode(BoardConfig::ACTIVE.input.power,
+              BoardConfig::ACTIVE.input.powerActiveHigh ? INPUT_PULLDOWN : INPUT_PULLUP);
+    }
+    beginTouch();
+    return;
+  }
+
   const int8_t pins[] = {BoardConfig::ACTIVE.input.back, BoardConfig::ACTIVE.input.confirm,
                          BoardConfig::ACTIVE.input.left, BoardConfig::ACTIVE.input.right,
                          BoardConfig::ACTIVE.input.up,   BoardConfig::ACTIVE.input.down};
@@ -145,6 +160,31 @@ void InputManager::readButtonAdc(ButtonAdcSample& group1, ButtonAdcSample& group
 
 uint8_t InputManager::getState() {
   uint8_t state = 0;
+
+  if (BoardConfig::ACTIVE.inputStyle == BoardConfig::InputStyle::OnePageAdcLadder) {
+    if (BoardConfig::ACTIVE.input.adcLadderPin >= 0) {
+      const int mv = analogReadMilliVolts(BoardConfig::ACTIVE.input.adcLadderPin);
+      if (mv >= 2400 && mv <= 2800)      state |= (1 << BTN_BACK);    // ~2592 mV
+      else if (mv >= 1780 && mv <= 2140) state |= (1 << BTN_LEFT);    // ~1956 mV
+      else if (mv >= 1140 && mv <= 1500) state |= (1 << BTN_RIGHT);   // ~1316 mV
+      else if (mv >= 0 && mv <= 250)     state |= (1 << BTN_CONFIRM); // ~0 mV (ENTER)
+    }
+    if (BoardConfig::ACTIVE.input.up >= 0 && digitalRead(BoardConfig::ACTIVE.input.up) == LOW) {
+      state |= (1 << BTN_UP);
+    }
+    if (BoardConfig::ACTIVE.input.down >= 0 && digitalRead(BoardConfig::ACTIVE.input.down) == LOW) {
+      state |= (1 << BTN_DOWN);
+    }
+    if (BoardConfig::ACTIVE.input.power >= 0) {
+      const int activeLevel = BoardConfig::ACTIVE.input.powerActiveHigh ? HIGH : LOW;
+      if (digitalRead(BoardConfig::ACTIVE.input.power) == activeLevel) {
+        state |= (1 << BTN_POWER);
+      }
+    }
+    state |= serviceTouch();
+    if (s_buttonHook) state |= s_buttonHook();
+    return state;
+  }
 
   if (BoardConfig::ACTIVE.inputStyle != BoardConfig::InputStyle::XteinkAdcLadder) {
     state = getDigitalState();
