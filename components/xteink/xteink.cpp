@@ -87,6 +87,13 @@ void Xteink::on_powerdown() {
 #endif
   hold_pin(b.power.latch0, latch_level);
   hold_pin(b.power.latch1, latch_level);
+  // Loads that stay on a rail held alive (X4 Pro): the GT911 has its own enable
+  // (GPIO2, active-LOW, so HIGH = off) and the frontlight LED drivers hang off
+  // active-HIGH PWM pads that must not float. No-ops where a profile leaves the
+  // pins unassigned. XteinkFrontlight::setup() releases these holds at boot.
+  hold_pin(b.touch.powerEnable, b.touch.powerEnableActiveHigh ? 0 : 1);
+  hold_pin(b.frontlight.gpio, b.frontlight.activeHigh ? 0 : 1);
+  hold_pin(b.frontlight.gpioWarm, b.frontlight.activeHigh ? 0 : 1);
   // Everything not held floats isolated (no leakage through SPI/DC/CS pads); the
   // holds themselves survive deep sleep. Same sequence as PowerManager::deepSleep().
   esp_sleep_config_gpio_isolate();

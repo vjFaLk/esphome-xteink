@@ -15,8 +15,9 @@ Updating to a newer SDK is one script run (see [Bumping the SDK](#bumping-the-sd
 | x4_pro | ESP32-S3 | 800×480 SSD1677/UC8179/UC8279| ✓       | 3 + home| CW2017  | warm/cool  | GT911 |
 
 All three compile in CI. **Hardware status:** tested on an **X4** (display, buttons, battery,
-deep sleep/wake, driving a Home Assistant remote). X3 and X4 Pro compile but have not been
-run on hardware yet — testing is planned once the devices arrive; reports welcome via issues.
+deep sleep/wake) and an **X4 Pro** (display, GT911 touch + home key, edge/power buttons,
+CW2017 battery, frontlight, OTA, deep sleep/wake), both driving a Home Assistant remote.
+The X3 compiles but has not been run on hardware yet; reports welcome via issues.
 
 ## Usage
 
@@ -68,6 +69,10 @@ light:
 
 touchscreen:
   - platform: xteink
+    # The SDK reports panel-native coords (0..799 x 0..479); ESPHome's touchscreen
+    # does not follow `display: rotation:`. For a portrait UI (rotation: 270) use:
+    transform: { swap_xy: true, mirror_x: true }
+    calibration: { x_min: 0, x_max: 479, y_min: 0, y_max: 799 }
     on_touch:
       - logger.log:
           format: "touch %d,%d"
@@ -87,7 +92,8 @@ the stock bootloader and partition table, as with any ESP32 board.
 - `it.update_count` counts refreshes, handy for "full refresh every N updates".
 - `deep_sleep` needs nothing extra in your YAML: on power-down the hub parks the panel (DSLP),
   drives the X4/X3 GPIO13 battery latch LOW (a real power-off on battery, like CrossPoint;
-  on USB the chip deep-sleeps and GPIO3 wakes it) and isolates every other pad.
+  on USB the chip deep-sleeps and GPIO3 wakes it), holds the X4 Pro's GPIO1 rail latch,
+  switches its GT911 off and parks the frontlight pads LOW, and isolates every other pad.
 - Buttons are named by position, not function; what they *do* is your YAML's business.
 - Migrating from `ngxson/esphome-component-xteink`: rename the platforms (`xteink_edp`,
   `xteink_input`, `xteink_battery` → `xteink`), rename `button_up` / `button_down` /

@@ -4,7 +4,9 @@
 #include "esphome/components/light/light_state.h"
 #include "esphome/core/component.h"
 
+#include <BoardConfig.h>
 #include <FrontlightManager.h>
+#include <driver/gpio.h>
 
 namespace esphome {
 namespace xteink {
@@ -12,7 +14,17 @@ namespace xteink {
 /// X4 Pro warm/cool frontlight as a cold-warm-white light.
 class XteinkFrontlight : public light::LightOutput, public Component {
  public:
-  void setup() override { this->frontlight_.begin(); }
+  void setup() override {
+    // Xteink::on_powerdown() holds the LED pads LOW; the hold survives the
+    // deep-sleep wake and a held pad silently ignores the LEDC drive begin()
+    // attaches (the SDK's own release is compiled out without FREEINK_FRONTLIGHT_LS).
+    const auto &fl = BoardConfig::ACTIVE.frontlight;
+    for (int8_t pin : {fl.gpio, fl.gpioWarm}) {
+      if (pin >= 0)
+        gpio_hold_dis(static_cast<gpio_num_t>(pin));
+    }
+    this->frontlight_.begin();
+  }
   float get_setup_priority() const override { return setup_priority::HARDWARE; }  // after the hub's rails
   void dump_config() override;
 
