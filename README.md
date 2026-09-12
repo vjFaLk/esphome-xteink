@@ -91,8 +91,9 @@ the stock bootloader and partition table, as with any ESP32 board.
   always at least a half refresh; later ones can be fast (partial/diff) updates.
 - `it.update_count` counts refreshes, handy for "full refresh every N updates".
 - `deep_sleep` needs nothing extra in your YAML: on power-down the hub parks the panel (DSLP),
-  drives the X4/X3 GPIO13 battery latch LOW (a real power-off on battery, like CrossPoint;
-  on USB the chip deep-sleeps and GPIO3 wakes it), holds the X4 Pro's GPIO1 rail latch,
+  drives the X4's GPIO13 battery latch LOW (a real power-off on battery, like CrossPoint;
+  on USB the chip deep-sleeps and GPIO3 wakes it), cuts the X3's SD rail (its GPIO13 —
+  the X3 has no battery latch, so it deep-sleeps and can timer-wake), holds the X4 Pro's GPIO1 rail latch,
   switches its GT911 off and parks the frontlight pads LOW, and isolates every other pad.
 - Buttons are named by position, not function; what they *do* is your YAML's business.
 - Migrating from `ngxson/esphome-component-xteink`: rename the platforms (`xteink_edp`,

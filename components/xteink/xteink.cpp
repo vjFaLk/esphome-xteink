@@ -15,6 +15,10 @@ static const char *const TAG = "xteink";
 void Xteink::setup() {
   // Battery-latched boards (X4 Pro's GPIO1 peripheral rail) power off without this.
   BoardConfig::holdPowerRails();
+  // X3: GPIO13 is the SD rail enable and shares SCLK/MOSI with the panel. on_powerdown()
+  // holds it LOW and the hold survives the wake reset; an unpowered card clamps the bus
+  // and the controller probe below goes deaf. No-op on boards without a switched SD rail.
+  BoardConfig::releaseSdRail();
   // Newer panel batches ship an UltraChip controller in place of the SSD1677/UC8253;
   // probe the bus and promote the profile before the driver is selected in begin().
   if (freeink::applyXteinkDisplayController()) {
@@ -74,10 +78,12 @@ void Xteink::on_powerdown() {
   // when the rail stays powered (X4/X3). EpdBus::begin() releases the hold on wake.
   hold_pin(b.display.rst, b.display.powerEnable >= 0 ? 0 : 1);
   hold_pin(b.display.powerEnable, 0);
-  // Power latches. X4/X3 (C3): GPIO13 gates the battery MOSFET and driving it LOW
+  // Power latches. X4 (C3): GPIO13 gates the battery MOSFET and driving it LOW
   // is the real power-off, as CrossPoint does — on battery the whole board goes
   // dark (zero drain; the power button bridges the rail again and we cold-boot),
   // on USB the chip stays up and falls through to deep sleep + GPIO3 wake.
+  // The X3 has no battery latch (its GPIO13 is the SD rail, cut below): the chip
+  // stays powered and deep-sleeps, so RTC timer wake works there on battery.
   // Other boards' latches are keep-alive enables (X4 Pro GPIO1): hold them HIGH.
   // Measured before this: ~5 %/h drained while "asleep", same as awake.
 #if FREEINK_MCU_C3
@@ -92,6 +98,9 @@ void Xteink::on_powerdown() {
   // active-HIGH PWM pads that must not float. No-ops where a profile leaves the
   // pins unassigned. XteinkFrontlight::setup() releases these holds at boot.
   hold_pin(b.touch.powerEnable, b.touch.powerEnableActiveHigh ? 0 : 1);
+  // Switched SD rail (X3 GPIO13, active-high): otherwise the card stays powered
+  // through sleep. setup() releases this hold before the display probe.
+  hold_pin(b.sd.powerEnable, b.sd.powerActiveHigh ? 0 : 1);
   hold_pin(b.frontlight.gpio, b.frontlight.activeHigh ? 0 : 1);
   hold_pin(b.frontlight.gpioWarm, b.frontlight.activeHigh ? 0 : 1);
   // Everything not held floats isolated (no leakage through SPI/DC/CS pads); the
