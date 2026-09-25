@@ -87,11 +87,17 @@ class Uc8279X4Driver : public PanelDriver {
   // into stock's ABSOLUTE selectors so white and black are DISTINCT buckets:
   //   plane0 = base | maskLsb,  plane1 = plane0 ^ maskMsb
   //   -> black=(0,0), dark=(1,0), light=(0,1), white=(1,1)
-  // sent INVERTED (as stock does; the 5x49 LUTs were extracted for this encoding).
-  // Feeding raw delta planes conflated black & white into one bucket and left the
-  // B/W diff baseline unaware of AA edge charge -> white ghosting; the absolute
-  // fold + post-DRF base restore (base = plane0 & plane1) fixes both. Single-byte
-  // CDI (constant 0x97), PSR rewritten before DRF, panel LEFT POWERED (vendor).
+  // sent INVERTED (as stock does; the 5x49 LUTs were extracted for this
+  // encoding). Feeding raw delta planes conflated black & white into one bucket
+  // and left the B/W diff baseline unaware of AA edge charge -> white ghosting;
+  // the absolute fold + post-DRF base restore (base = plane0 & plane1) fixes
+  // both. Single-byte CDI (constant 0x97), PSR rewritten before DRF, panel LEFT
+  // POWERED (vendor).
+  // Defined in the .cpp: reports unsupported for LUT_VER 0x67, a variant
+  // stock's panel LUT registry (X4 Pro 260917 build) recognizes but ships no
+  // external-LUT tables for — that panel runs OTP waveforms only.
+  GrayscaleCapabilities grayscaleCapabilities(GrayscaleMode mode = GrayscaleMode::Overlay) const override;
+  void beginGrayscale(EpdBus& bus, const uint8_t* fb, GrayscaleMode mode, RefreshMode fallback, bool turnOff) override;
   void copyGrayscaleLsb(EpdBus& bus, const uint8_t* lsb) override;
   void copyGrayscaleMsb(EpdBus& bus, const uint8_t* msb) override;
   void displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff, const unsigned char* lut, bool factoryMode) override;
@@ -106,6 +112,7 @@ class Uc8279X4Driver : public PanelDriver {
 
  private:
   void initController(EpdBus& bus);
+  void startBwRefresh(EpdBus& bus, bool fast);
   // Stream a framebuffer into a RAM plane: 0xFF padding for gates before the
   // visible offset, visible rows in the stock convention (forward order, bytes
   // as-is; FREEINK_UC8279X4_ROWREV/XMIRROR can flip either axis for future
@@ -140,8 +147,12 @@ class Uc8279X4Driver : public PanelDriver {
   // absolute plane0, copyGrayscaleMsb derives plane1 and recovers the base for
   // the post-DRF restore. SPIRAM-backed, framebuffer-sized, allocated in begin().
   uint8_t* _grayBase = nullptr;
+  bool _grayImagePass = false;
   bool _grayBaseValid = false;
   bool _absoluteGrayPlanes = false;
+  bool _absoluteInput = false;
+  bool _directGrayPass = false;
+  bool _directGrayOnPanel = false;
   // True once a grayscale (AA) refresh has run. Gates the non-flashing base
   // transition + precondition (both need a valid previous page in DTM1).
   bool _grayRefreshedOnce = false;
@@ -151,7 +162,6 @@ class Uc8279X4Driver : public PanelDriver {
   // by the next B/W displayStart to RE-DRIVE every pixel to its target (DTM1 =
   // ~newframe), scrubbing the residue with a cheap DU (no GC flash).
   bool _redriveAfterGray = false;
-
   // Async split state (see Uc8179Driver for the contract).
   bool _pendingRefresh = false;
   bool _pendingTurnOff = false;

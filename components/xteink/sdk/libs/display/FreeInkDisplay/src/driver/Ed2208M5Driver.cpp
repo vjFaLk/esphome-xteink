@@ -29,7 +29,6 @@ constexpr uint16_t PANEL_HEIGHT = 600;
 constexpr uint16_t REFRESH_CUTOFF_MS = 340;
 constexpr uint16_t BUSY_SETTLE_MS = 20;
 constexpr uint8_t DARK_DISPLAY_CTRL = 0x0F;
-constexpr uint32_t PANEL_AREA = static_cast<uint32_t>(PANEL_WIDTH) * PANEL_HEIGHT;
 
 }  // namespace
 

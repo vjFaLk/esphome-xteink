@@ -80,8 +80,22 @@ class Uc8179Driver : public PanelDriver {
   // with the displayed B/W base to recover Factory.bin's absolute 2-bit planes,
   // then sends plane0 -> DTM 0x10 and plane1 -> DTM 0x13. Full-buffer path only
   // (supportsStripGrayscale stays false; conversion needs the complete base).
-  void displayGrayscaleBase(EpdBus& bus, const uint8_t* fb, RefreshMode fallback, bool turnOff) override;
-  void preconditionGrayscale(EpdBus& bus, uint16_t x, uint16_t y, uint16_t w, uint16_t h) override;
+  void displayGrayscaleBase(EpdBus &bus, const uint8_t *fb,
+                                  RefreshMode fallback, bool turnOff) override;
+  void preconditionGrayscale(EpdBus &bus, uint16_t x, uint16_t y, uint16_t w,
+                             uint16_t h) override;
+  GrayscaleCapabilities grayscaleCapabilities(
+      GrayscaleMode mode = GrayscaleMode::Overlay) const override {
+    if (mode == GrayscaleMode::Absolute || mode == GrayscaleMode::Direct)
+      return {GrayscaleEncoding::AbsolutePlanes,
+              mode == GrayscaleMode::Direct ? GrayscaleBase::Combined : GrayscaleBase::Separate,
+              false, false, false};
+    if (mode != GrayscaleMode::Overlay)
+      return {};
+    return {GrayscaleEncoding::OverlayMasks, GrayscaleBase::Separate, false,
+            false, false};
+  }
+  void beginGrayscale(EpdBus& bus, const uint8_t* fb, GrayscaleMode mode, RefreshMode fallback, bool turnOff) override;
   void copyGrayscaleLsb(EpdBus& bus, const uint8_t* lsb) override;
   void copyGrayscaleMsb(EpdBus& bus, const uint8_t* msb) override;
   void displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff, const unsigned char* lut, bool factoryMode) override;
@@ -89,6 +103,9 @@ class Uc8179Driver : public PanelDriver {
 
  private:
   void initController(EpdBus& bus);
+  void startBwRefresh(EpdBus& bus, bool fast);
+  void configureDirectGrayscale(EpdBus &bus);
+  void restoreBwConfiguration(EpdBus &bus);
   // Stream a framebuffer into a RAM plane (ramCmd): reverse row order, use PSR
   // SHL for horizontal panel direction, then pad to the addressed gate count.
   // Used for both NEW plane (0x13) and OLD-plane sync (0x10).
@@ -122,6 +139,11 @@ class Uc8179Driver : public PanelDriver {
   uint8_t* _grayBase = nullptr;
   bool _grayBaseValid = false;
   bool _absoluteGrayPlanes = false;
+  bool _absoluteInput = false;
+  bool _directGrayPass = false;
+  bool _directGrayOnPanel = false;
+  bool _directGrayConfigured = false;
+  uint8_t _directGrayPlanes = 0;
 
   bool _isScreenOn = false;
   // Force the first refresh after begin() to a full flash, so a partial update

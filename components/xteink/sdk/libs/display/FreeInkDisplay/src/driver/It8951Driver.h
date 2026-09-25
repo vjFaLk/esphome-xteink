@@ -63,7 +63,10 @@ class It8951Driver : public PanelDriver {
   // Strip support is advertised so the consumer keeps the B/W frame intact and
   // hands displayGray() the true base buffer (the no-strip fallback overwrites the
   // framebuffer with the MSB plane, which would paint a near-black, inverted page).
-  bool supportsStripGrayscale() const override { return true; }
+  GrayscaleCapabilities grayscaleCapabilities(GrayscaleMode mode = GrayscaleMode::Overlay) const override {
+    if (mode != GrayscaleMode::Overlay) return {};
+    return {GrayscaleEncoding::OverlayMasks, GrayscaleBase::Separate, true, false, false};
+  }
   void copyGrayscaleLsb(EpdBus& bus, const uint8_t* lsb) override;
   void copyGrayscaleMsb(EpdBus& bus, const uint8_t* msb) override;
   void writeGrayscalePlaneStrip(EpdBus& bus, GrayPlane plane, const uint8_t* rows, uint16_t yStart,

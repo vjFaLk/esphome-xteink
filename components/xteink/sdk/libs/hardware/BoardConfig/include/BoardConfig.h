@@ -75,14 +75,17 @@
 #ifndef FREEINK_DEVICE_ONEPAGE
 #define FREEINK_DEVICE_ONEPAGE 0
 #endif
+#ifndef FREEINK_DEVICE_WS397
+#define FREEINK_DEVICE_WS397 0
+#endif
 
 // --- 2) Coherence: exactly one MCU family, at least one device ---------------
 #if !(FREEINK_DEVICE_X4 || FREEINK_DEVICE_X3 || FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_M5 || \
       FREEINK_DEVICE_MURPHY || FREEINK_DEVICE_DELINK || FREEINK_DEVICE_LILYGO || FREEINK_DEVICE_M5PAPER ||               \
       FREEINK_DEVICE_STICKY || FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_PAPERS3 || FREEINK_DEVICE_MURPHY_M4 ||         \
-      FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_ONEPAGE)
+      FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_ONEPAGE || FREEINK_DEVICE_WS397)
 #error \
-    "FreeInk: no device selected. Pass at least one -DFREEINK_DEVICE_<NAME> (X4, X3, X4PRO, X4CLASSIC, M5, MURPHY, DELINK, LILYGO, M5PAPER, STICKY, PAPERMONO, PAPERS3, MURPHY_M4, EEGO_A4, ONEPAGE) in your build env — see platformio.sample.ini."
+    "FreeInk: no device selected. Pass at least one -DFREEINK_DEVICE_<NAME> (X4, X3, X4PRO, X4CLASSIC, M5, MURPHY, DELINK, LILYGO, M5PAPER, STICKY, PAPERMONO, PAPERS3, MURPHY_M4, EEGO_A4, ONEPAGE, WS397) in your build env — see platformio.sample.ini."
 #endif
 // Each device belongs to one MCU family; a binary targets exactly one. X3/X4 are
 // ESP32-C3; M5 PaperColor/Murphy/de-link/LilyGo are ESP32-S3; M5Paper v1.1 is the
@@ -93,7 +96,7 @@
 #define FREEINK_MCU_S3                                                                                    \
   (FREEINK_DEVICE_M5 || FREEINK_DEVICE_MURPHY || FREEINK_DEVICE_DELINK || FREEINK_DEVICE_LILYGO ||        \
    FREEINK_DEVICE_STICKY || FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO ||  \
-   FREEINK_DEVICE_PAPERS3 || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_EEGO_A4)
+   FREEINK_DEVICE_PAPERS3 || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_EEGO_A4 || FREEINK_DEVICE_WS397)
 #define FREEINK_MCU_ESP32 (FREEINK_DEVICE_M5PAPER)
 #if (FREEINK_MCU_C3 + FREEINK_MCU_C61 + FREEINK_MCU_S3 + FREEINK_MCU_ESP32) != 1
 #error \
@@ -108,7 +111,7 @@
 // use SSD1677, UC8179, or UC8279, recovered from OEM firmware and hardware
 // references — see docs/xteink-x4pro-support.md.
 #if FREEINK_DEVICE_X4 || FREEINK_DEVICE_DELINK || FREEINK_DEVICE_STICKY || FREEINK_DEVICE_X4PRO || \
-    FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_ONEPAGE
+    FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_ONEPAGE || FREEINK_DEVICE_WS397
 #define FREEINK_DRIVER_SSD1677 1
 #else
 #define FREEINK_DRIVER_SSD1677 0
@@ -211,13 +214,26 @@
 #define FREEINK_CAP_WARMLIGHT (FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_EEGO_A4)
 #endif
 // USB Mass Storage ("USB Transfer" mode): exposes the SD card to a host over
-// USB-MSC. OPT-IN (default off), NOT board-derived: it forces the build into
-// USB-OTG mode (ARDUINO_USB_MODE=0 + CONFIG_TINYUSB_MSC_ENABLED), which changes
-// how the USB serial console works — so a board enables it in its OWN env
-// alongside those flags (e.g. X4 Pro adds -DFREEINK_CAP_USB_MSC=1
-// -DARDUINO_USB_MODE=0 -DARDUINO_USB_CDC_ON_BOOT=1). Native-USB (ESP32-S3/C3
-// OTG) targets only. When 0, UsbMassStorage links stub bodies and pulls in no
-// TinyUSB/MSC code. Requires SDMMC/SPI storage exposing a block device.
+// USB-MSC. OPT-IN (default off), NOT board-derived, so a board enables it in
+// its OWN env (e.g. -DFREEINK_CAP_USB_MSC=1). Native-USB (ESP32-S3/C3 OTG)
+// targets only. When 0, UsbMassStorage links stub bodies and pulls in no
+// TinyUSB/MSC code.
+//
+// ARDUINO_USB_MODE=0 is one way to reach the OTG PHY, not a requirement of this
+// library. A firmware can equally keep ARDUINO_USB_MODE=1 — so USB Serial/JTAG
+// stays the board's normal USB personality for monitoring and flashing — and
+// switch the shared PHY to OTG at runtime for the duration of a transfer,
+// handing it back before it reboots out of the mode. X4 Pro and LilyGo T5 S3
+// both ship that way in CrossPoint.
+//
+// What this DOES require is the platform's prebuilt Arduino core, whose TinyUSB
+// component is built with CONFIG_TINYUSB_MSC_ENABLED: an env that rebuilds the
+// core from source (custom_sdkconfig / custom_component_remove) drops that
+// component and USBMSC will not link.
+//
+// Storage must expose a 512-byte-sector block device. Both SDCardManager
+// backends do — SDMMC natively, and SPI through SdFat's own SdCard — so this is
+// no longer an SDMMC-only capability.
 #ifndef FREEINK_CAP_USB_MSC
 #define FREEINK_CAP_USB_MSC 0
 #endif
@@ -260,7 +276,7 @@
 #ifndef FREEINK_BATTERY_I2C_GAUGE
 #define FREEINK_BATTERY_I2C_GAUGE                                                            \
   (FREEINK_DEVICE_X3 || FREEINK_DEVICE_LILYGO || FREEINK_DEVICE_STICKY || FREEINK_DEVICE_X4PRO || \
-   FREEINK_DEVICE_X4CLASSIC)
+   FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_WS397)
 #endif
 #ifndef FREEINK_CAP_COLOR
 #define FREEINK_CAP_COLOR (FREEINK_DEVICE_M5)
@@ -279,13 +295,15 @@
 #ifndef FREEINK_CAP_RTC
 #define FREEINK_CAP_RTC                                                                             \
   (FREEINK_DEVICE_X3 || FREEINK_DEVICE_STICKY || FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || \
-   FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_PAPERS3 || FREEINK_DEVICE_LILYGO || FREEINK_DEVICE_EEGO_A4)
+   FREEINK_DEVICE_PAPERMONO || FREEINK_DEVICE_PAPERS3 || FREEINK_DEVICE_LILYGO || FREEINK_DEVICE_EEGO_A4 || \
+   FREEINK_DEVICE_WS397)
 #endif
 #ifndef FREEINK_CAP_TEMP_HUMIDITY
 #define FREEINK_CAP_TEMP_HUMIDITY (FREEINK_DEVICE_STICKY)
 #endif
 #ifndef FREEINK_CAP_IMU
-#define FREEINK_CAP_IMU (FREEINK_DEVICE_X3 || FREEINK_DEVICE_STICKY || FREEINK_DEVICE_X4CLASSIC)
+#define FREEINK_CAP_IMU \
+  (FREEINK_DEVICE_X3 || FREEINK_DEVICE_STICKY || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_WS397)
 #endif
 // LEDC PWM buzzer (tone beeper). The Buzzer lib drives the AudioConfig.buzzer
 // pin; on for boards that wire one (Sticky GPIO48, Murphy GPIO46, PaperS3
@@ -324,7 +342,7 @@
 #ifndef FREEINK_SD_SDMMC
 #define FREEINK_SD_SDMMC                                                                            \
   (FREEINK_DEVICE_DELINK || FREEINK_DEVICE_X4PRO || FREEINK_DEVICE_X4CLASSIC || FREEINK_DEVICE_PAPERMONO || \
-   FREEINK_DEVICE_MURPHY_M4)
+   FREEINK_DEVICE_MURPHY_M4 || FREEINK_DEVICE_WS397)
 #endif
 
 // Serial log transport hint for consumer firmware. Boards can share the same MCU
@@ -381,6 +399,7 @@ enum class Board : uint8_t {
   M5PaperS3,  // ESP32-S3 sibling of M5Paper v1.1: same ED047TC1 glass, no IT8951 — raw parallel via LovyanGFX
   EegoA4,     // EEGO Reader A4: ESP32-S3, UC8279C 768x552 SPI panel, GSLX680 touch, PCF8563 RTC
   OnePage,    // OnePage: ESP32-C61, SSD1677 800x480 SPI panel, 4-key ADC ladder + 3 side keys
+  WsEpaper397,  // Waveshare ESP32-S3-ePaper-3.97: SSD1677 800x480, 3 keys + BOOT, AXP2101 PMIC
 };
 
 // How the board reports button presses.
@@ -474,7 +493,9 @@ struct SdmmcPins {
 // init, so BatteryMonitor dispatches on it. Bq27220: TI command registers, no profile
 // upload (LilyGo/X3). Cw2017: CellWise gauge that needs an 80-byte BATINFO battery
 // profile loaded before it reports a valid SoC (Xteink X4 Pro).
-enum class GaugeType : uint8_t { Bq27220, Cw2017 };
+// Axp2101: not a gauge chip but a PMIC whose fuel-gauge block reports SoC directly
+// (Waveshare ESP32-S3-ePaper-3.97). Its registers live in Axp2101.h.
+enum class GaugeType : uint8_t { Bq27220, Cw2017, Axp2101 };
 
 // I2C fuel-gauge / charger wiring (e.g. BQ27220 + BQ25896 on LilyGo T5 S3). When
 // gaugeAddr != 0 (and FREEINK_BATTERY_I2C_GAUGE is set), BatteryMonitor reads the
@@ -628,7 +649,7 @@ struct MicConfig {
   bool enableActiveHigh;
 };
 
-enum class RtcType : uint8_t { None, Pcf8563, Ds3231, Rx8130 };
+enum class RtcType : uint8_t { None, Pcf8563, Ds3231, Rx8130, Pcf85063 };
 enum class ImuType : uint8_t { None, Lsm6ds3, Qmi8658 };
 
 // On-board I2C sensors sharing one bus (e.g. the Sticky's RTC + temp/humidity +
@@ -644,6 +665,14 @@ struct SensorsConfig {
   uint8_t i2cBus = 0;        // 0 = Wire, 1 = Wire1 on multi-bus SoCs
   RtcType rtcType = RtcType::None;
   ImuType imuType = ImuType::None;
+  // IMU mount correction, applied to raw accel + gyro samples so Imu::read()
+  // reports a board-independent frame: gyro X = the portrait left/right tilt
+  // axis, gyro Y = the landscape one (the X3/X4 convention existing consumers
+  // assume). swapXY first (IMU rotated 90° on the PCB), then per-axis sign
+  // flip — same ordering as TouchConfig's swapXY/flip mapping.
+  bool imuSwapXY = false;
+  bool imuFlipX = false;
+  bool imuFlipY = false;
 };
 
 // How the panel is mounted relative to the driver's native scan. Any board injects
@@ -826,20 +855,16 @@ constexpr SdmmcPins NO_SDMMC = {
     PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, 0};
 constexpr BatteryGaugeConfig NO_GAUGE = {PIN_UNASSIGNED, PIN_UNASSIGNED, 0, 0, 0};  // ADC battery
 
+// Shared display SPI default for every Xteink board and controller variant.
+constexpr uint32_t XTEINK_DISPLAY_SPI_HZ = 10000000u;
+
 // --- Xteink X4 — ESP32-C3, SSD1677 (800x480) ---------------------------------
-// X4 display SPI clock. Default 20 MHz = SSD1677 datasheet max for write mode
-// (Solomon Systech SSD1677, MCU Serial Interface AC Characteristics: "MCU
-// interface: SPI serial peripheral, Maximum 20MHz for write"; fSCL Write = 20 MHz.
-// https://files.waveshare.com/upload/2/2a/SSD1677_1.0.pdf). The plane writes are
-// ~38 ms/refresh at 20 MHz. Define -DFREEINK_X4_OVERCLOCK_SPI to run 40 MHz — the
-// (out-of-spec, 2x datasheet) clock the CrossPoint / Witch Reader fork used, which
-// halves that to ~19 ms (~17-20 ms/refresh faster) but can glitch plane writes on
-// marginal wiring. Opt-in only; validate on your hardware. (NB: the Ssd1677Driver
-// 0-default of 40 MHz is likewise over spec for boards that leave displaySpiHz 0.)
+// Default 10 MHz, like the other Xteink profiles. Preserve the explicit legacy
+// 40 MHz opt-in for consumers that have validated it on their hardware.
 #ifdef FREEINK_X4_OVERCLOCK_SPI
 #define FREEINK_X4_DISPLAY_SPI_HZ 40000000u
 #else
-#define FREEINK_X4_DISPLAY_SPI_HZ 20000000u
+#define FREEINK_X4_DISPLAY_SPI_HZ 10000000u
 #endif
 constexpr BoardProfile XTEINK_X4 = {Board::XteinkX4,
                                     "xteink_x4",
@@ -886,11 +911,7 @@ constexpr BoardProfile XTEINK_X3 = {
     792,
     528,
     {8, 10, 21, 4, 5, 6, PIN_UNASSIGNED},
-    20000000,  // displaySpiHz: 20 MHz = UC8253 datasheet max. UC8253 datasheet (UltraChip / Good Display),
-               // features: "Clock rate up to 20MHz" (serial write timing TSCYCW).
-               // (https://www.elecrow.com/download/product/DIE01237S/UC8253_Datasheet.pdf)
-               // Witch Reader (a CrossPoint fork) ran a conservative 16 MHz; 20 MHz is in-spec and ~25% faster
-               // on plane writes. Falls back to the driver's 16 MHz default if set to 0.
+    XTEINK_DISPLAY_SPI_HZ,  // displaySpiHz: 10 MHz
     // powerEnable=GPIO13 = the X3 SD-rail power switch (active-high; HIGH at boot
     // powers the card, the sleep path drives it LOW). Confirmed by X3 factory-firmware
     // RE: setup() does digitalWrite(13,HIGH); every deep-sleep does digitalWrite(13,LOW).
@@ -929,7 +950,7 @@ constexpr BoardProfile XTEINK_X3_UC8279 = {
     792,
     528,
     {8, 10, 21, 4, 5, 6, PIN_UNASSIGNED},
-    20000000,
+    XTEINK_DISPLAY_SPI_HZ,  // displaySpiHz: 10 MHz
     {PIN_UNASSIGNED, 7, PIN_UNASSIGNED, 12, 13, false, 0},  // SD powerEnable=GPIO13 (active-high) — see XTEINK_X3
     {0, 1, 2, 3, 4, 5, 3, false},
     0,
@@ -1473,7 +1494,10 @@ constexpr BoardProfile STICKY = {
     {MicInput::Pdm, 19, 20, 38, true},
     // Sensors on the shared sensor I2C bus (SDA1/SCL0, same as the fuel gauge):
     // PCF8563 RTC (0x51), SHT40 temp/humidity (0x44), LSM6DS3TR-C IMU (0x6A).
-    {1, 0, 400000, 0x51, 0x44, 0x6A, 1, RtcType::Pcf8563, ImuType::Lsm6ds3},
+    // imuSwapXY: the IMU sits 90° rotated vs the X3-frame convention — field
+    // report: left/right tilt gestures landed on the up/down axis. Flip signs
+    // pending hardware validation of gesture direction.
+    {1, 0, 400000, 0x51, 0x44, 0x6A, 1, RtcType::Pcf8563, ImuType::Lsm6ds3, true},
     1.2f,  // uiScale: touch device, 3.97" 800x480 — bump chrome to finger size
     // Power latch: PWR_HOLD GPIO45 + PWR_LOCK GPIO46, driven HIGH first thing in
     // boot (the vendor demo's first init step) — see holdPowerRails().
@@ -1482,6 +1506,69 @@ constexpr BoardProfile STICKY = {
     // JTAG reset-default pull-up disables charging the whole time we're awake
     // (~0.06 A USB input awake vs ~0.5 A once sleep isolates the pad).
     {45, 46, 39, false}};
+
+// --- Waveshare ESP32-S3-ePaper-3.97 — ESP32-S3-WROOM-1-N16R8, SSD1677 800x480 --
+// Pins come from the vendor demo sources (waveshareteam/ESP32-S3-ePaper-3.97):
+// Arduino/examples DEV_Config.h + 05_SD_Test, and ESP-IDF/08_.../components
+// (epaper_port, sdcard_bsp, button_bsp, user_config.h).
+//
+// The panel is the same SSD1677 800x480 class as the X4 / Sticky, and the vendor
+// bring-up is byte-identical to Sticky's (booster AE C7 C3 C0 80, scan 0x02, data
+// entry 0x01, update sequences 0xF7 full / 0xFF partial), so the driver reuses
+// ssd1677StickyConfig().
+//
+// The EPD rail is NOT a GPIO: it hangs off the AXP2101 PMIC's ALDO3, and the same
+// PMIC is the battery gauge and the power button. Axp2101.h owns that bus; EpdBus
+// and BatteryMonitor call into it.
+//
+// Buttons: three side keys (UP 4 / OK 5 / DOWN 6) plus BOOT (GPIO0), all
+// active-low. BOOT doubles as Back and as the deep-sleep wake pin — hold it to
+// sleep, press it to wake. The PMIC's own PWRKEY still does the hardware 1 s
+// power-on / 4 s power-off; firmware never sees it.
+//
+// Hardware-confirmed on a unit, reading an EPUB end to end: panel bring-up through
+// the PMIC rail, NO_FLIP orientation, PCF85063 RTC, 4-bit SDMMC, buttons, and BOOT
+// waking the board out of deep sleep. The 20 MHz SPI clock stays: page-turn time is
+// panel waveform (407 ms) + gray display (226 ms) against 24 ms of SPI, so the
+// 40 MHz default would buy ~10 ms of 910. PENDING: the reused Sticky grayscale LUT.
+constexpr BoardProfile WS_EPAPER_397 = {
+    Board::WsEpaper397,
+    "ws397",
+    InputStyle::DigitalButtons,
+    DisplayController::SSD1677,
+    800,
+    480,
+    // SCK11 MOSI12 CS10 DC9 RST46 BUSY3; no power-enable GPIO (ALDO3, see above).
+    {11, 12, 10, 9, 46, 3, PIN_UNASSIGNED},
+    20000000,  // displaySpiHz: the vendor demo's 20 MHz; 0 would take the 40 MHz default
+    // SD is 4-bit SDMMC (sdmmc field below); these SPI pins are unused.
+    {PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, false, 0},
+    // back=BOOT(0), confirm=OK(5), no left/right, up=4, down=6. BOOT is also the
+    // power key (hold to sleep, press to wake) — it is the pin the vendor demo
+    // arms as its deep-sleep wake source. All active-low.
+    //
+    // GPIO38 is NOT a button: it is the AXP2101's active-low interrupt output,
+    // which sits LOW for as long as any PMIC interrupt is pending. Mapping it as
+    // a key reads as one held down forever. The case-labelled PWR key has not
+    // been located yet — see docs/waveshare-epaper-397-support.md.
+    {0, 5, PIN_UNASSIGNED, PIN_UNASSIGNED, 4, 6, 0, false},
+    PIN_UNASSIGNED,  // batteryAdc: none — the AXP2101 reports SoC over I2C
+    PIN_UNASSIGNED,  // batteryChargeStatus: PMIC register, not a pin
+    2.0f,
+    PIN_UNASSIGNED,  // usbDetect: PMIC VBUS status, not a pin
+    NO_TOUCH,
+    NO_FRONTLIGHT,
+    NO_AUDIO,  // ES8311 codec + NS4150B amp are wired but unused by the reader
+    NO_LEDS,
+    NO_FLIP,
+    {16, 17, 15, 7, 8, 18, 4},  // SDMMC 4-bit: CLK16 CMD17 D0=15 D1=7 D2=8 D3=18
+    // AXP2101 PMIC at 0x34 on the board's single I2C bus (SDA41/SCL42), read as a
+    // fuel gauge (percent + VBAT + charge state).
+    {41, 42, 400000, 0x34, 0, 0, GaugeType::Axp2101},
+    {MicInput::None, PIN_UNASSIGNED, PIN_UNASSIGNED, PIN_UNASSIGNED, true},
+    // Same I2C bus: PCF85063 RTC (0x51) and QMI8658 IMU (0x6B, probed 0x6A too).
+    // The SHTC3 (0x70) has no EnvironmentSensor backend yet, so it stays 0.
+    {41, 42, 400000, 0x51, 0, 0x6B, 0, RtcType::Pcf85063, ImuType::Qmi8658}};
 
 // --- Xteink X4 Pro — ESP32-S3, 800x480 EPD + GT911 touch + warm/cold frontlight ---
 // Recovered from the OEM flash dump (x4pro_flash_dump.bin); full evidence and confidence
@@ -1507,9 +1594,7 @@ constexpr BoardProfile XTEINK_X4_PRO = {
     // needed. GPIO1 also triggers a refresh when toggled (likely a panel power
     // enable), but the panel works without driving it, so powerEnable stays unset.
     {12, 11, 13, 18, 14, 6, PIN_UNASSIGNED},
-    20000000,  // displaySpiHz: 20 MHz, matching the X4's default. The OEM clocks the panel at only 5 MHz
-               // (SPISettings 0x4C4B40), but the SSD1677 handles far more (X4 runs 20, de-link 40), so 20 MHz
-               // is well in spec and gives noticeably faster RAM writes. Drop back to 5 MHz if artifacts appear.
+    XTEINK_DISPLAY_SPI_HZ,  // displaySpiHz: 10 MHz across SSD1677/UC8179/UC8279 batches
     // SD is native SDMMC (see the sdmmc field below) — the card is silent to SPI-mode CMD0 on
     // hardware. This SPI SdPins entry is retained only for its powerEnable=GPIO5, the SD enable
     // used by the SDMMC mount path. GPIO5 is ACTIVE-LOW: SdmmcBlockDevice pulses it HIGH→LOW
@@ -1656,7 +1741,7 @@ constexpr BoardProfile XTEINK_X4_CLASSIC = {
     // from NVS screenType. GPIO1 supplies the panel/peripheral rail.
     // {SCLK, MOSI, CS, DC, RST, BUSY, powerEnable}
     {12, 11, 13, 14, 10, 18, PIN_UNASSIGNED},
-    20000000,  // displaySpiHz: UC8279 serial-write maximum; avoids throttling full-plane AA uploads
+    XTEINK_DISPLAY_SPI_HZ,  // displaySpiHz: 10 MHz
     // SD SPI view retained only for consistency; the card mounts via the native SDMMC
     // block device (sdmmc field below). GPIO6 is its active-low enable; the stock mount
     // pulses HIGH->LOW and leaves it LOW while the card is in use.
@@ -1765,13 +1850,16 @@ constexpr uint32_t MAX_FRAMEBUFFER_BYTES = cmax(
                    FREEINK_DEVICE_PAPERMONO ? panelBytes(PAPER_MONO) : 0u),
               cmax(cmax(FREEINK_DEVICE_PAPERS3 ? panelBytes(M5PAPER_S3) : 0u,
                         FREEINK_DEVICE_MURPHY_M4 ? panelBytes(MURPHY_M4) : 0u),
-                   cmax(FREEINK_DEVICE_EEGO_A4 ? panelBytes(EEGO_A4) : 0u,
-                        FREEINK_DEVICE_ONEPAGE ? panelBytes(ONEPAGE) : 0u)))));
+                   cmax(cmax(FREEINK_DEVICE_EEGO_A4 ? panelBytes(EEGO_A4) : 0u,
+                             FREEINK_DEVICE_ONEPAGE ? panelBytes(ONEPAGE) : 0u),
+                        FREEINK_DEVICE_WS397 ? panelBytes(WS_EPAPER_397) : 0u)))));
 
 // Compile-time default device — the profile ACTIVE starts as. With a single
 // device in the build this is the only device; with several same-MCU devices it
 // is the boot default until the consumer calls selectDevice().
-#if FREEINK_DEVICE_ONEPAGE
+#if FREEINK_DEVICE_WS397
+constexpr BoardProfile DEFAULT_DEVICE = WS_EPAPER_397;
+#elif FREEINK_DEVICE_ONEPAGE
 constexpr BoardProfile DEFAULT_DEVICE = ONEPAGE;
 #elif FREEINK_DEVICE_PAPERMONO
 constexpr BoardProfile DEFAULT_DEVICE = PAPER_MONO;
@@ -1894,6 +1982,11 @@ inline bool selectDevice(Board which) {
       ACTIVE = ONEPAGE;
       break;
 #endif
+#if FREEINK_DEVICE_WS397
+    case Board::WsEpaper397:
+      ACTIVE = WS_EPAPER_397;
+      break;
+#endif
     default:
       return false;
   }
@@ -1916,6 +2009,7 @@ inline bool isX4Classic() { return ACTIVE.board == Board::XteinkX4Classic; }
 inline bool isPaperMono() { return ACTIVE.board == Board::PaperMono; }
 inline bool isEegoA4() { return ACTIVE.board == Board::EegoA4; }
 inline bool isOnePage() { return ACTIVE.board == Board::OnePage; }
+inline bool isWsEpaper397() { return ACTIVE.board == Board::WsEpaper397; }
 inline bool hasTouch() { return ACTIVE.touch.controller != TouchController::None; }
 inline bool hasHomeKey() { return ACTIVE.touch.hasHomeKey; }
 inline bool hasPwmFrontlight() { return ACTIVE.frontlight.gpio != PIN_UNASSIGNED || ACTIVE.frontlight.viaPm1Pwm; }

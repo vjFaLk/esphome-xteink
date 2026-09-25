@@ -13,6 +13,9 @@
 
 #if FREEINK_BATTERY_I2C_GAUGE
 #include <Wire.h>
+#if FREEINK_DEVICE_WS397
+#include <Axp2101.h>
+#endif
 
 // Minimal, dependency-free I2C fuel-gauge read for boards that carry one (e.g.
 // LilyGo T5 S3: BQ27220 gauge + BQ25896 charger). Standard TI command registers;
@@ -205,6 +208,14 @@ bool cw2017EnsureProfile(const uint8_t addr) {
 // SoC (0..100) from the active gauge, dispatched by type. false on I2C failure.
 bool readGaugeSoc(uint16_t& out) {
   const auto& g = BoardConfig::ACTIVE.batteryGauge;
+#if FREEINK_DEVICE_WS397
+  if (g.gaugeType == BoardConfig::GaugeType::Axp2101) {
+    uint8_t soc = 0;
+    if (!freeink::axp2101::batteryPercent(soc)) return false;
+    out = soc;
+    return true;
+  }
+#endif
   if (g.gaugeType == BoardConfig::GaugeType::Cw2017) {
     static bool initialized = false;
     static unsigned long lastInitAttemptMs = 0;
@@ -241,6 +252,9 @@ bool readGaugeSoc(uint16_t& out) {
 // Battery voltage (mV) from the active gauge, dispatched by type. false on failure.
 bool readGaugeMillivolts(uint16_t& out) {
   const auto& g = BoardConfig::ACTIVE.batteryGauge;
+#if FREEINK_DEVICE_WS397
+  if (g.gaugeType == BoardConfig::GaugeType::Axp2101) return freeink::axp2101::batteryMillivolts(out);
+#endif
   if (g.gaugeType == BoardConfig::GaugeType::Cw2017) {
     uint8_t hi = 0, lo = 0;
     if (!readReg8(g.gaugeAddr, CW2017_REG_VCELL_H, hi)) return false;
@@ -268,6 +282,9 @@ bool readGaugeMillivolts(uint16_t& out) {
 // a board with neither gaugeAddr nor chargerAddr).
 bool readGaugeCharging(bool& known) {
   const auto& g = BoardConfig::ACTIVE.batteryGauge;
+#if FREEINK_DEVICE_WS397
+  if (g.gaugeType == BoardConfig::GaugeType::Axp2101) return freeink::axp2101::isCharging(known);
+#endif
   // CW2017 has no current register and the X4 Pro has no charger IC on this bus, so
   // charging state is not observable from the gauge (the OEM infers it elsewhere).
   if (g.gaugeType == BoardConfig::GaugeType::Cw2017) {
@@ -289,6 +306,35 @@ bool readGaugeCharging(bool& known) {
   }
   known = false;
   return false;
+}
+
+// External-power presence from the charger IC, out of the SAME REG0B read that
+// readGaugeCharging() uses for CHRG_STAT:
+//   VBUS_STAT [7:5] — 000 no input, 001 USB host SDP, 010 USB CDP, 011 adapter,
+//                     111 OTG (we are SOURCING power, not receiving it)
+//   PG_STAT   [2]   — power good
+// Anything but "no input" and "OTG" means a cable is supplying us. Unlike
+// charge state this stays true at 100%, which is exactly the case that makes
+// charge-based USB inference wrong.
+//
+// Only the BQ25896 answers this. The BQ27220 gauge measures the BATTERY, not
+// the input rail, so there is deliberately no gauge fallback here — reporting
+// "no external power" from a gauge that cannot see the input would be a lie.
+bool readChargerExternalPower(bool& known) {
+  const auto& g = BoardConfig::ACTIVE.batteryGauge;
+  if (g.chargerAddr == 0) {
+    known = false;
+    return false;
+  }
+  uint8_t status = 0;
+  if (!readReg8(g.chargerAddr, BQ25896_REG_STATUS, status)) {
+    known = false;
+    return false;
+  }
+  known = true;
+  const uint8_t vbus = (status >> 5) & 0x07;
+  const bool powerGood = (status & 0x04) != 0;
+  return (vbus != 0x00 && vbus != 0x07) || powerGood;
 }
 }  // namespace
 #endif  // FREEINK_BATTERY_I2C_GAUGE
@@ -504,6 +550,29 @@ bool BatteryMonitor::isCharging() const {
   // STAT at its board-declared active level (default: MCP73832-style /STAT,
   // LOW while charging).
   return digitalRead(_chargeStatusPin) == chargeActiveLevel();
+}
+
+bool BatteryMonitor::isExternalPowerPresent(bool* known) const {
+  bool observed = false;
+#if FREEINK_BATTERY_I2C_GAUGE
+  const bool present = readChargerExternalPower(observed);
+  if (observed) {
+    if (known) *known = true;
+    return present;
+  }
+#endif
+  if (hasM5Pm1Backend()) {
+    // The M5 PMIC reports its supply source directly (PWR_SRC 5VIN/5VINOUT),
+    // which readM5Pm1Status() already decodes into externalPower — the right
+    // field here, rather than the `charging` one it derives from it.
+    Status status;
+    if (readM5Pm1Status(status) && status.externalPowerKnown) {
+      if (known) *known = true;
+      return status.externalPower;
+    }
+  }
+  if (known) *known = false;
+  return false;
 }
 
 bool BatteryMonitor::readM5Pm1Status(Status& status) const {

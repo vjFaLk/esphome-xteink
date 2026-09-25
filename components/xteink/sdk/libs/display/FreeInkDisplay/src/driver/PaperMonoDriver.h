@@ -55,14 +55,15 @@ class PaperMonoDriver final : public PanelDriver {
   void displayFinish(EpdBus& bus, const uint8_t* fb) override;
   void seedPreviousFrame(EpdBus& bus, const uint8_t* buf) override;
 
-  bool supportsStripGrayscale() const override { return true; }
-  bool combinesGrayscaleBase() const override { return true; }
   void displayGrayscaleBase(EpdBus& bus, const uint8_t* fb, RefreshMode fallback, bool turnOff) override;
+  GrayscaleCapabilities grayscaleCapabilities(GrayscaleMode mode = GrayscaleMode::Overlay) const override {
+    if (mode != GrayscaleMode::Overlay) return {};
+    return {GrayscaleEncoding::OverlayMasks, GrayscaleBase::Combined, true, false, true};
+  }
   void copyGrayscaleLsb(EpdBus& bus, const uint8_t* lsb) override;
   void copyGrayscaleMsb(EpdBus& bus, const uint8_t* msb) override;
   // Selector staging is host-RAM only, so the renderer may hand over strips at
   // any time without synchronising against the controller.
-  bool supportsBusyGrayscaleStaging() const override { return true; }
   void writeGrayscalePlaneStrip(EpdBus& bus, GrayPlane plane, const uint8_t* rows, uint16_t yStart,
                                 uint16_t numRows) override;
   void prepareGrayscaleTarget(const uint8_t* bw) override;
