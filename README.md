@@ -33,6 +33,7 @@ external_components:
 # xteink:
 #   model: x4
 #   update_interval: 50ms   # button/touch poll rate
+#   hold_battery_latch: true  # X4 only: stay powered through deep sleep so a timer can wake it
 
 font:
   - file: "gfonts://Roboto"
@@ -92,7 +93,9 @@ the stock bootloader and partition table, as with any ESP32 board.
 - `it.update_count` counts refreshes, handy for "full refresh every N updates".
 - `deep_sleep` needs nothing extra in your YAML: on power-down the hub parks the panel (DSLP),
   drives the X4's GPIO13 battery latch LOW (a real power-off on battery, like CrossPoint;
-  on USB the chip deep-sleeps and GPIO3 wakes it), cuts the X3's SD rail (its GPIO13 —
+  on USB the chip deep-sleeps and GPIO3 wakes it; `hold_battery_latch: true` keeps it HIGH
+  instead so `sleep_duration` timer wakes work — at ~3-4 mA asleep, a limit of the X4 PCB,
+  and less with the microSD card removed), cuts the X3's SD rail (its GPIO13 —
   the X3 has no battery latch, so it deep-sleeps and can timer-wake), holds the X4 Pro's GPIO1 rail latch,
   switches its GT911 off and parks the frontlight pads LOW, and isolates every other pad.
 - Buttons are named by position, not function; what they *do* is your YAML's business.

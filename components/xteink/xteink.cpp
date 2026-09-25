@@ -82,11 +82,14 @@ void Xteink::on_powerdown() {
   // is the real power-off, as CrossPoint does — on battery the whole board goes
   // dark (zero drain; the power button bridges the rail again and we cold-boot),
   // on USB the chip stays up and falls through to deep sleep + GPIO3 wake.
+  // `hold_battery_latch: true` keeps it HIGH instead so the RTC timer can wake
+  // the board (a dashboard). That costs ~3-4 mA on the X4 PCB even in deep
+  // sleep (unswitched SD slot, battery divider, LDO): ~5-6 days on 650 mAh.
   // The X3 has no battery latch (its GPIO13 is the SD rail, cut below): the chip
   // stays powered and deep-sleeps, so RTC timer wake works there on battery.
   // Other boards' latches are keep-alive enables (X4 Pro GPIO1): hold them HIGH.
   // Measured before this: ~5 %/h drained while "asleep", same as awake.
-#if FREEINK_MCU_C3
+#if FREEINK_MCU_C3 && !XTEINK_HOLD_BATTERY_LATCH
   const int latch_level = 0;
 #else
   const int latch_level = 1;

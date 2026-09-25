@@ -21,6 +21,9 @@ xteink_ns = cg.esphome_ns.namespace("xteink")
 Xteink = xteink_ns.class_("Xteink", cg.PollingComponent)
 
 CONF_XTEINK_ID = "xteink_id"
+# X4 only: keep the GPIO13 battery MOSFET on through deep sleep so the RTC timer can
+# wake the board. Costs ~3-4 mA asleep on that PCB; off = a real power cut, button wake only.
+CONF_HOLD_BATTERY_LATCH = "hold_battery_latch"
 
 # model -> (esp32 variant, FreeInk device flag)
 MODELS = {
@@ -45,6 +48,7 @@ CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(Xteink),
         cv.Required(CONF_MODEL): cv.one_of(*MODELS, lower=True),
+        cv.Optional(CONF_HOLD_BATTERY_LATCH, default=False): cv.boolean,
     }
 ).extend(cv.polling_component_schema("50ms"))
 
@@ -156,6 +160,8 @@ def _vendor_sdk() -> Path:
 
 async def to_code(config):
     cg.add_build_flag(f"-D{MODELS[config[CONF_MODEL]][1]}=1")
+    if config[CONF_HOLD_BATTERY_LATCH]:
+        cg.add_build_flag("-DXTEINK_HOLD_BATTERY_LATCH=1")
     # One 48 KB framebuffer; the panel controller's RAM holds the previous frame.
     cg.add_build_flag("-DEINK_DISPLAY_SINGLE_BUFFER_MODE=1")
 
