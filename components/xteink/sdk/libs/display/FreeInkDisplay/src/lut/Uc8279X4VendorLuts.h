@@ -8,8 +8,7 @@
 // glass: QY (probe id 0x02) and ZHX (probe ids 0x68/0x69). Stock keys its LUT
 // bank on the probed VER id; the ZHX bank's pre-BW and AA sets are named
 // QY_COMPAT (shared waveforms), but the four-tone set differs per vendor.
-// Data-only: not yet wired into Uc8279X4Driver (which currently synthesizes
-// its four-tone bank by time-scaling the X3 XTH4 waveform).
+// Uc8279X4Driver selects these banks by the probed controller/panel variant.
 
 namespace freeink {
 

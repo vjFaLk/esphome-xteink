@@ -22,6 +22,7 @@
 // production waits one tick and then polls until it returns HIGH.
 
 #include "PanelDriver.h"
+#include "Uc8279X4RefreshState.h"
 
 namespace freeink {
 
@@ -61,9 +62,58 @@ struct Uc8279X4Config {
 
 const Uc8279X4Config& uc8279X4DefaultConfig();
 
+// Declarative refresh programs. A pipeline may contain an AsyncBoundary; the
+// driver executes through that step in displayStart() and resumes at the next
+// step in displayFinish(). Alternate hardware experiments inject a different
+// set instead of adding mode-specific branches to the driver.
+enum class Uc8279X4RefreshStep : uint8_t {
+  UploadNewTarget,
+  UploadOldWhite,
+  UploadOldComplementTarget,
+  UploadGrayPlanes,
+  ConfigureBwFull,
+  ConfigureBwFast,
+  ConfigureGrayPrecondition,
+  ConfigureGrayActivation,
+  PowerOn,
+  EnterFullWindow,
+  EnterGrayWindow,
+  SelectOtp,
+  SelectExternal,
+  Activate,
+  AsyncBoundary,
+  WaitRefresh,
+  ExitWindow,
+  RestoreOldTarget,
+  RestoreBothBaseline,
+  PowerOffIfRequested,
+};
+
+struct Uc8279X4RefreshPipeline {
+  const char* name;
+  const Uc8279X4RefreshStep* steps;
+  uint8_t stepCount;
+};
+
+struct Uc8279X4RefreshPipelines {
+  Uc8279X4RefreshPipeline bwFull;
+  Uc8279X4RefreshPipeline bwScrub;
+  Uc8279X4RefreshPipeline bwFast;
+  Uc8279X4RefreshPipeline bwFastOverGray;
+  Uc8279X4RefreshPipeline bwRedrive;
+  Uc8279X4RefreshPipeline grayPrecondition;
+  Uc8279X4RefreshPipeline grayOverlay;
+  Uc8279X4RefreshPipeline grayAbsolute;
+  Uc8279X4RefreshPipeline grayDirect;
+};
+
+const Uc8279X4RefreshPipelines& uc8279X4DefaultPipelines();
+
 class Uc8279X4Driver : public PanelDriver {
  public:
-  explicit Uc8279X4Driver(const Uc8279X4Config& cfg = uc8279X4DefaultConfig());
+  explicit Uc8279X4Driver(const Uc8279X4Config& cfg = uc8279X4DefaultConfig(),
+                          const Uc8279X4RefreshPipelines& pipelines = uc8279X4DefaultPipelines());
+  ~Uc8279X4Driver() override;
 
   uint32_t spiHz() const override;
   BusyPolarity busyPolarity() const override { return BusyPolarity::UcIdleHigh; }
@@ -106,7 +156,7 @@ class Uc8279X4Driver : public PanelDriver {
   void copyGrayscaleMsb(EpdBus& bus, const uint8_t* msb) override;
   void displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff, const unsigned char* lut, bool factoryMode) override;
   void cleanupGrayscaleBuffers(EpdBus& bus, const uint8_t* bw) override;
-  void preserveGrayscaleOnFastRefresh() override { _redriveAfterGray = false; }
+  void preserveGrayscaleOnFastRefresh() override;
   void setGrayscaleWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h) override;
   // Base frame for a grayscale overlay. The periodic clean the reader asks for
   // via a Half fallback must be a TRUE Full GC on this path — the Half is a B/W
@@ -119,27 +169,35 @@ class Uc8279X4Driver : public PanelDriver {
  private:
   void initController(EpdBus& bus);
   void resetRuntimeState(bool retained);
-  void ensureGrayScratch();
-  void startBwRefresh(EpdBus& bus, bool fast);
+  bool ensureHostBuffers();
+  bool runPipeline(EpdBus& bus, const Uc8279X4RefreshPipeline& pipeline, bool resume);
+  bool executeStep(EpdBus& bus, Uc8279X4RefreshStep step);
+  void configureBwRefresh(EpdBus& bus, bool fast);
+  void configureGrayActivation(EpdBus& bus);
+  void configureGrayPrecondition(EpdBus& bus);
+  const Uc8279X4RefreshPipeline& pipelineFor(Uc8279X4RefreshState::Pipeline pipeline) const;
+  uint32_t nextGeneration();
   // Stream a framebuffer into a RAM plane: 0xFF padding for gates before the
   // visible offset, visible rows in the stock convention (forward order, bytes
   // as-is; FREEINK_UC8279X4_ROWREV/XMIRROR can flip either axis for future
   // sub-variants), then 0xFF padding to the addressed gate count. `invert`
   // bitwise-inverts the image rows (AA planes only, per the vendor reference).
   void streamPlane(EpdBus& bus, uint8_t ramCmd, const uint8_t* fb, bool invert = false);
-  // Stream (lhs XOR rhs) into a RAM plane with the same geometry/mirroring as
-  // streamPlane (used to build absolute grayscale plane1 = plane0 ^ maskMsb).
-  void streamPlaneXor(EpdBus& bus, uint8_t ramCmd, const uint8_t* lhs, const uint8_t* rhs, bool invert = false);
   void powerOnIfNeeded(EpdBus& bus, const char* tag);
   // Stock's non-flashing previous->current AA base transition (FUN_4214d4ac /
   // FUN_4214d3a0). DTM1 holds the previous page's B/W base, DTM2 the new one;
   // the UC8279_aa_prebw_mid settle waveform drives that transition without an OTP
   // GC flash. Ported from the UC8179 sibling; the base is restored to DTM1 after.
   void transitionGrayscaleBase(EpdBus& bus, const uint8_t* fb, bool turnOff);
-  void runGrayscalePrecondition(EpdBus& bus);
+  bool runGrayscalePrecondition(EpdBus& bus);
   void enterGrayscaleWindow(EpdBus& bus);
+  void enterFullWindow(EpdBus& bus);
+  void expandWindowForBwDelta();
+  void expandWindowForGrayDelta();
+  void includeChangedByte(uint16_t byteX, uint16_t y);
 
   const Uc8279X4Config& _cfg;
+  const Uc8279X4RefreshPipelines& _pipelines;
 
   uint16_t _w;      // visible width (800)
   uint16_t _h;      // visible height (480)
@@ -147,39 +205,41 @@ class Uc8279X4Driver : public PanelDriver {
   uint16_t _tresH;  // addressed gate count (600)
   uint32_t _bufferSize;
 
-  bool _isScreenOn = false;
-  bool _needFullClear = true;
-  bool _oldPlaneValid = false;
+  // Stable host-owned buffers. Caller draw buffers may be swapped or modified
+  // immediately after displayStart(), so no finish path may depend on them.
+  uint8_t* _bwBaseline = nullptr;
+  uint8_t* _bwTarget = nullptr;
+  uint8_t* _grayLsb = nullptr;
+  uint8_t* _grayMsb = nullptr;
+  // Absolute logical selector planes corresponding to the native-gray image
+  // currently on glass. Zoned activation is only legal while these are valid;
+  // otherwise the window is promoted to the full visible panel.
+  uint8_t* _panelGrayLsb = nullptr;
+  uint8_t* _panelGrayMsb = nullptr;
+  bool _panelGrayValid{false};
 
-  // Grayscale absolute-plane state (ported from UC8179). `_grayBase` holds the
-  // B/W base captured at displayStart; copyGrayscaleLsb folds it into stock's
-  // absolute plane0, copyGrayscaleMsb derives plane1 and recovers the base for
-  // the post-DRF restore. SPIRAM-backed, framebuffer-sized, allocated in begin().
-  uint8_t* _grayBase = nullptr;
-  bool _grayImagePass = false;
-  bool _grayBaseValid = false;
-  bool _absoluteGrayPlanes = false;
-  bool _absoluteInput = false;
-  bool _directGrayPass = false;
-  bool _directGrayOnPanel = false;
-  // True once a grayscale (AA) refresh has run. Gates the non-flashing base
-  // transition + precondition (both need a valid previous page in DTM1).
-  bool _grayRefreshedOnce = false;
-  // Set after every grayscale (AA) refresh. The AA overlay leaves gray edge
-  // charge the plain B/W fast diff can't scrub (the B/W baseline records those
-  // pixels as white), so it accumulates under rapid page turns → garble. Consumed
-  // by the next B/W displayStart to RE-DRIVE every pixel to its target (DTM1 =
-  // ~newframe), scrubbing the residue with a cheap DU (no GC flash).
-  bool _redriveAfterGray = false;
-  bool _grayscaleWindowEnabled = false;
-  uint16_t _grayscaleWindowX = 0;
-  uint16_t _grayscaleWindowY = 0;
-  uint16_t _grayscaleWindowW = 0;
-  uint16_t _grayscaleWindowH = 0;
-  // Async split state (see Uc8179Driver for the contract).
-  bool _pendingRefresh = false;
-  bool _pendingTurnOff = false;
-  bool _pendingPartial = false;
+  struct GrayJob {
+    GrayscaleMode mode{GrayscaleMode::Overlay};
+    bool imageQuality{false};
+  } _grayJob;
+
+  struct Window {
+    bool enabled{false};
+    bool entered{false};
+    uint16_t x{0};
+    uint16_t y{0};
+    uint16_t w{0};
+    uint16_t h{0};
+  } _window;
+
+  struct PipelineCursor {
+    const Uc8279X4RefreshPipeline* pipeline{nullptr};
+    uint8_t nextStep{0};
+    bool turnOff{false};
+  } _cursor;
+
+  Uc8279X4RefreshState _state;
+  uint32_t _generation{0};
 };
 
 PanelDriver& uc8279X4Driver();
