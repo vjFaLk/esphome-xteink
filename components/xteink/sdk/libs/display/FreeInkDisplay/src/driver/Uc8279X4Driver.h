@@ -158,12 +158,9 @@ class Uc8279X4Driver : public PanelDriver {
   void cleanupGrayscaleBuffers(EpdBus& bus, const uint8_t* bw) override;
   void preserveGrayscaleOnFastRefresh() override;
   void setGrayscaleWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h) override;
-  // Base frame for a grayscale overlay. The periodic clean the reader asks for
-  // via a Half fallback must be a TRUE Full GC on this path — the Half is a B/W
-  // invert-seed scrub that cannot clear the panel's gray edge charge and leaves
-  // ghosting on an AA page. Promote Half->Full here; Fast stays Fast (the
-  // absolute AA path self-cleans per page). The pure-B/W menu keeps its Half
-  // scrub because it arrives through display()/displayStart, not this entry.
+  // Base frame for a grayscale overlay. Explicit Full/Half requests use their
+  // corresponding B/W pipeline; Fast uses the factory pre-B/W transition when
+  // a prior gray reference and exact B/W controller baseline are available.
   void displayGrayscaleBase(EpdBus& bus, const uint8_t* fb, RefreshMode fallback, bool turnOff) override;
 
  private:

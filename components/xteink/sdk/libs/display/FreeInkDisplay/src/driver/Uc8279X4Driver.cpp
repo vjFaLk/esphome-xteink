@@ -587,7 +587,7 @@ bool Uc8279X4Driver::displayStart(EpdBus& bus, const uint8_t* fb, const uint8_t*
   const bool deferred = runPipeline(bus, pipelineFor(selected), false);
   if (!deferred && _state.snapshot().pending == selected && _state.complete_bw()) {
     memcpy(_bwBaseline, _bwTarget, _bufferSize);
-    _panelGrayValid = false;
+    if (selected != Pipeline::BwFastOverGray) _panelGrayValid = false;
   }
   return deferred;
 }
@@ -600,7 +600,7 @@ void Uc8279X4Driver::displayFinish(EpdBus& bus, const uint8_t* fb) {
   runPipeline(bus, pipeline, true);
   if (_state.snapshot().pending == pending && _state.complete_bw() && _bwBaseline != nullptr && _bwTarget != nullptr) {
     memcpy(_bwBaseline, _bwTarget, _bufferSize);
-    _panelGrayValid = false;
+    if (pending != Uc8279X4RefreshState::Pipeline::BwFastOverGray) _panelGrayValid = false;
   }
 }
 

@@ -611,6 +611,12 @@ static void testUc8279X4GrayscaleWindow() {
   assert(!driver._window.enabled && !driver._window.entered);
   assert(driver._state.snapshot().panel.content ==
          Uc8279X4RefreshState::PanelContent::NativeGray);
+  driver.preserveGrayscaleOnFastRefresh();
+  bus.clear();
+  driver.display(bus, bw.data(), nullptr, RefreshMode::Fast, false);
+  assert(driver._state.snapshot().panel.content ==
+         Uc8279X4RefreshState::PanelContent::NativeGrayWithBwDelta);
+  assert(driver._panelGrayValid);
   bus.clear();
   driver.cleanupGrayscaleBuffers(bus, bw.data());
   assert(bus.writes.empty());  // The gray pipeline already restored both RAM planes.
