@@ -148,6 +148,8 @@ void XteinkDisplay::setup() {
 }
 
 void XteinkDisplay::draw_absolute_pixel_internal(int x, int y, Color color) {
+  if (this->conditioning_active_)
+    return;
   auto &epd = this->parent_->display();
   if (x < 0 || y < 0 || x >= epd.getDisplayWidth() || y >= epd.getDisplayHeight())
     return;
@@ -454,7 +456,7 @@ bool XteinkDisplay::render_ordered_dither_() {
 }
 
 void XteinkDisplay::schedule_grayscale_settle_() {
-  if (this->virtual_update_active_ || this->sleep_preparing_ ||
+  if (this->conditioning_active_ || this->virtual_update_active_ || this->sleep_preparing_ ||
       this->grayscale_strategy_ != GRAYSCALE_ADAPTIVE ||
       !this->grayscale_available_)
     return;
@@ -463,6 +465,8 @@ void XteinkDisplay::schedule_grayscale_settle_() {
 }
 
 void XteinkDisplay::postpone_grayscale_settle() {
+  if (this->conditioning_active_)
+    return;
   if (this->virtual_update_active_) {
     // Touch updates can continue while a slider or retained-frame bootstrap is
     // rendering virtually. They must not re-arm an interactive panel preview.
@@ -487,6 +491,8 @@ void XteinkDisplay::postpone_grayscale_settle() {
 }
 
 void XteinkDisplay::prepare_page_change() {
+  if (this->conditioning_active_)
+    return;
   if (this->grayscale_strategy_ != GRAYSCALE_ADAPTIVE || !this->grayscale_available_)
     return;
 
@@ -573,6 +579,8 @@ void XteinkDisplay::end_retained_frame_bootstrap() {
 }
 
 bool XteinkDisplay::settle_grayscale() {
+  if (this->conditioning_active_)
+    return false;
   if (this->virtual_update_active_) {
     // A virtual frame is deliberately not a controller transaction. Leave its
     // luma and dirty bounds intact for the first real mutation after resume.
@@ -603,10 +611,18 @@ bool XteinkDisplay::settle_grayscale() {
     // and damaged digit strokes. Connected-component expansion still prevents
     // this padding from pulling unrelated widgets into the update.
     constexpr int MARGIN = 12;
-    const int x0 = std::max(0, this->grayscale_dirty_x0_ - MARGIN);
+    int x0 = std::max(0, this->grayscale_dirty_x0_ - MARGIN);
     const int y0 = std::max(0, this->grayscale_dirty_y0_ - MARGIN);
-    const int x1 = std::min(epd.getDisplayWidth() - 1, this->grayscale_dirty_x1_ + MARGIN);
+    int x1 = std::min(epd.getDisplayWidth() - 1, this->grayscale_dirty_x1_ + MARGIN);
     const int y1 = std::min(epd.getDisplayHeight() - 1, this->grayscale_dirty_y1_ + MARGIN);
+    // A partial-window edge close to the panel edge can leave a vertical
+    // waveform seam through unrelated content. The right gauge ends beneath
+    // the battery label, so its padded PTL edge otherwise crosses that label.
+    // Put such edges outside the visible glass while retaining the other three
+    // sides of the localized update.
+    constexpr int EDGE_SNAP = 32;
+    if (x0 <= EDGE_SNAP) x0 = 0;
+    if (epd.getDisplayWidth() - 1 - x1 <= EDGE_SNAP) x1 = epd.getDisplayWidth() - 1;
     epd.setGrayscaleWindow(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
   } else {
     epd.setGrayscaleWindow(0, 0, 0, 0);
@@ -650,6 +666,8 @@ bool XteinkDisplay::settle_grayscale() {
 }
 
 bool XteinkDisplay::flush_for_deep_sleep() {
+  if (this->conditioning_active_)
+    return false;
   if (this->virtual_update_active_)
     return false;
   // LVGL can finish drawing into the host framebuffer shortly before a sleep
@@ -698,14 +716,16 @@ bool XteinkDisplay::begin_panel_conditioning() {
       !this->uses_native_grayscale_planes_() || !this->parent_->display().supportsConditioningRedrive())
     return false;
 
-  // Drain the last ordinary refresh first, then cancel deferred adaptive-gray
-  // work so it cannot interleave with the manual sequence.
+  // Claim the panel before draining the last refresh. Its completion can
+  // schedule a gray settle, which must see conditioning ownership immediately.
+  this->conditioning_active_ = true;
   this->finish_pending_refresh_(true);
   this->cancel_timeout("grayscale_interactive_preview");
   this->cancel_timeout("grayscale_settle");
   this->grayscale_settle_pending_ = false;
   this->interactive_preview_requested_ = false;
-  this->conditioning_active_ = true;
+  this->buffer_dirty_ = false;
+  this->clear_grayscale_dirty_();
   ESP_LOGI(TAG, "Panel conditioning started");
   return true;
 }
