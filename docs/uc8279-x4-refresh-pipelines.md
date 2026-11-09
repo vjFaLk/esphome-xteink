@@ -129,6 +129,22 @@ Conditioning must be composed from explicit pipelines. “Black” and “white�
 image targets, not waveform names. Repeating an OTP GC refresh can contain
 inverse phases and therefore is not an endpoint overcharge operation.
 
+The manual X4 conditioning experiment runs 30 transactions, yielding to the
+ESPHome scheduler between them:
+
+`black scrub → black redrive ×5 → white scrub → white redrive ×5 → black scrub →
+gray 0/1/2/3 direct → black scrub → black redrive ×5 → white scrub → white
+redrive ×5 → white scrub`.
+
+The scrub is the self-contained `bw_scrub` pipeline. Each redrive runs the
+windowed OTP DU waveform with OLD set to the complement of the requested solid
+target and NEW set to that target. The gray steps use full-panel absolute
+selectors through `gray_direct`, so no intervening B/W base activation obscures
+the four-tone waveform. `gray_overlay` cannot encode the final solid white tone
+over the black base under its documented mask contract. The repeated DU passes
+are a physical experiment, not a proven DC or charge-conditioning sequence;
+the observed tone and ghosting on the actual panel decide whether to keep it.
+
 ## Required invariants
 
 1. At most one pipeline is pending.

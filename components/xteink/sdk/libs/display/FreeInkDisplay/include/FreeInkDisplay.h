@@ -31,7 +31,7 @@ class FreeInkDisplay {
   ~FreeInkDisplay() = default;
 
   // Refresh modes (public contract — full / balanced-half / fast).
-  enum RefreshMode { FULL_REFRESH, HALF_REFRESH, FAST_REFRESH };
+  enum RefreshMode { FULL_REFRESH, HALF_REFRESH, FAST_REFRESH, CONDITIONING_REDRIVE };
 
   // Select panel geometry/controller before begin().
   void setDisplayX3();
@@ -165,6 +165,7 @@ class FreeInkDisplay {
 #endif
 
   void displayBuffer(RefreshMode mode = FAST_REFRESH, bool turnOffScreen = false);
+  bool supportsConditioningRedrive() const;
 
   // Non-blocking refresh: pushes the frame, starts the panel waveform, and
   // returns (~25 ms) while the panel refreshes on its own (~0.3-2 s). Poll

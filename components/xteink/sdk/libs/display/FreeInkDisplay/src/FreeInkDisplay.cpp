@@ -65,6 +65,8 @@ RefreshMode toInternal(FreeInkDisplay::RefreshMode m) {
       return RefreshMode::Full;
     case FreeInkDisplay::HALF_REFRESH:
       return RefreshMode::Half;
+    case FreeInkDisplay::CONDITIONING_REDRIVE:
+      return RefreshMode::ConditioningRedrive;
     default:
       return RefreshMode::Fast;
   }
@@ -571,6 +573,10 @@ void FreeInkDisplay::syncPendingAsync() {
 
 bool FreeInkDisplay::supportsAsyncRefresh() const {
   return !_inverted && !_inversionDirty && _driver != nullptr && _driver->supportsAsyncDisplay();
+}
+
+bool FreeInkDisplay::supportsConditioningRedrive() const {
+  return _driver != nullptr && _driver->supportsConditioningRedrive();
 }
 
 GrayscaleCapabilities FreeInkDisplay::grayscaleCapabilities(GrayscaleMode mode) const {

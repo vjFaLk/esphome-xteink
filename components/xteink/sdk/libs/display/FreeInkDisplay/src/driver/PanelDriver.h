@@ -19,7 +19,7 @@
 
 namespace freeink {
 
-enum class RefreshMode : uint8_t { Full, Half, Fast };
+enum class RefreshMode : uint8_t { Full, Half, Fast, ConditioningRedrive };
 enum class GrayPlane : uint8_t { Lsb, Msb };
 
 struct PanelGeometry {
@@ -67,6 +67,7 @@ class PanelDriver {
   // drivers without a trial call, and lets hosts size overlap buffers up
   // front. Must agree with what displayStart() actually returns.
   virtual bool supportsAsyncDisplay() const { return false; }
+  virtual bool supportsConditioningRedrive() const { return false; }
 
   // Two-call refresh split (CrossPoint EInkDisplay::triggerDisplay/completeDisplay).
   // For the shadowed async path the facade passes its own baseline copy as

@@ -567,7 +567,9 @@ bool Uc8279X4Driver::displayStart(EpdBus& bus, const uint8_t* fb, const uint8_t*
 
   using Pipeline = Uc8279X4RefreshState::Pipeline;
   Pipeline selected = mode == RefreshMode::Half ? Pipeline::BwScrub : Pipeline::BwFull;
-  if (mode == RefreshMode::Fast) {
+  if (mode == RefreshMode::ConditioningRedrive) {
+    selected = Pipeline::BwRedrive;
+  } else if (mode == RefreshMode::Fast) {
     const auto& state = _state.snapshot();
     if (state.preserve_gray_for_next_bw)
       selected = Pipeline::BwFastOverGray;

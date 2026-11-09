@@ -695,7 +695,7 @@ void XteinkDisplay::freeze_for_deep_sleep() {
 
 bool XteinkDisplay::begin_panel_conditioning() {
   if (this->virtual_update_active_ || this->sleep_preparing_ || !this->grayscale_available_ ||
-      !this->uses_native_grayscale_planes_())
+      !this->uses_native_grayscale_planes_() || !this->parent_->display().supportsConditioningRedrive())
     return false;
 
   // Drain the last ordinary refresh first, then cancel deferred adaptive-gray
@@ -715,9 +715,9 @@ bool XteinkDisplay::condition_panel_step(uint8_t step) {
     return false;
 
   auto &epd = this->parent_->display();
-  auto show_bw = [&](uint8_t value) {
+  auto show_bw = [&](uint8_t value, EInkDisplay::RefreshMode mode) {
     epd.clearScreen(value);
-    epd.displayBuffer(EInkDisplay::FULL_REFRESH);
+    epd.displayBuffer(mode);
     this->update_count++;
   };
   auto show_gray = [&](uint8_t level) {
@@ -735,48 +735,40 @@ bool XteinkDisplay::condition_panel_step(uint8_t step) {
     return true;
   };
 
-  // black -> white -> black -> gray[0..3] -> white -> black -> white ->
-  // gray[3..0] -> black -> white. Every explicit B/W phase starts with one
-  // strong full refresh and then repeats that endpoint with ten direct
-  // grayscale waveforms. Direct mode is important here: Overlay would repaint
-  // a B/W base before every pass, which made the sweep appear to contain only
-  // a single gray. One call still performs exactly one physical transaction so
-  // ESPHome can feed the watchdog and service API clients between passes.
-  static constexpr int8_t PHASES[16] = {
-      -1, -2, -1, 0, 1, 2, 3, -2, -1, -2, 3, 2, 1, 0, -1, -2,
+  // Each endpoint first uses the self-contained scrub pipeline, then five DU
+  // redrives with OLD=complement(target). The four-tone sweep uses the Direct
+  // pipeline: an overlay would repaint a B/W base between tones, and cannot
+  // encode solid white over a black base under its documented mask contract.
+  // The black-to-gray and gray-to-black transitions are deliberately full
+  // panel; this tests the X4 quality waveform without a partial-window edge.
+  enum class Kind : uint8_t { Scrub, Redrive, GraySweep };
+  struct Phase { Kind kind; uint8_t value; uint8_t count; };
+  static constexpr Phase PHASES[] = {
+      {Kind::Scrub, 0x00, 1}, {Kind::Redrive, 0x00, 5},
+      {Kind::Scrub, 0xFF, 1}, {Kind::Redrive, 0xFF, 5},
+      {Kind::Scrub, 0x00, 1}, {Kind::GraySweep, 0, 4},
+      {Kind::Scrub, 0x00, 1}, {Kind::Redrive, 0x00, 5},
+      {Kind::Scrub, 0xFF, 1}, {Kind::Redrive, 0xFF, 5},
+      {Kind::Scrub, 0xFF, 1},
   };
   uint8_t first_transaction = 0;
-  for (uint8_t phase_index = 0; phase_index < 16; phase_index++) {
-    const int8_t phase = PHASES[phase_index];
-    const uint8_t transaction_count = phase < 0 ? 11 : 1;
-    if (step >= first_transaction + transaction_count) {
-      first_transaction += transaction_count;
+  for (const auto& phase : PHASES) {
+    if (step >= first_transaction + phase.count) {
+      first_transaction += phase.count;
       continue;
     }
-
     const uint8_t pass = step - first_transaction;
-    if (phase == -1 && pass == 0) {
-      ESP_LOGD(TAG, "Panel conditioning transaction %u/%u (black full)", step + 1,
-               CONDITIONING_TRANSACTION_COUNT);
-      show_bw(0x00);
-      return true;
+    if (phase.kind == Kind::GraySweep) {
+      ESP_LOGD(TAG, "Panel conditioning transaction %u/%u (gray %u)", step + 1,
+               CONDITIONING_TRANSACTION_COUNT, pass);
+      return show_gray(pass);
     }
-    if (phase == -2 && pass == 0) {
-      ESP_LOGD(TAG, "Panel conditioning transaction %u/%u (white full)", step + 1,
-               CONDITIONING_TRANSACTION_COUNT);
-      show_bw(0xFF);
-      return true;
-    }
-    if (phase < 0) {
-      const uint8_t level = phase == -1 ? 0 : 3;
-      ESP_LOGD(TAG, "Panel conditioning transaction %u/%u (%s endpoint %u/10)", step + 1,
-               CONDITIONING_TRANSACTION_COUNT, phase == -1 ? "black" : "white", pass);
-      return show_gray(level);
-    }
-
-    ESP_LOGD(TAG, "Panel conditioning transaction %u/%u (gray %d)", step + 1,
-             CONDITIONING_TRANSACTION_COUNT, phase);
-    return show_gray(static_cast<uint8_t>(phase));
+    ESP_LOGD(TAG, "Panel conditioning transaction %u/%u (%s %s)", step + 1,
+             CONDITIONING_TRANSACTION_COUNT, phase.value == 0 ? "black" : "white",
+             phase.kind == Kind::Scrub ? "scrub" : "redrive");
+    show_bw(phase.value, phase.kind == Kind::Scrub ? EInkDisplay::HALF_REFRESH
+                                                  : EInkDisplay::CONDITIONING_REDRIVE);
+    return true;
   }
   return false;
 }

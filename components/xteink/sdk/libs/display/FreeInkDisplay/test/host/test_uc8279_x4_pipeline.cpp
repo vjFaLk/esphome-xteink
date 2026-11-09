@@ -107,9 +107,27 @@ static void test_sleep_forces_strong_refresh() {
          bus.commands.begin() + static_cast<std::ptrdiff_t>(psr));
 }
 
+static void test_explicit_conditioning_redrive() {
+  EpdBus bus;
+  Uc8279X4Driver driver;
+  driver.begin(bus);
+  uint8_t black[] = {0, 0, 0, 0};
+  driver.display(bus, black, nullptr, RefreshMode::Half, false);
+  const size_t firstUpload = bus.uploads.size();
+  driver.display(bus, black, nullptr, RefreshMode::ConditioningRedrive, false);
+  assert(bus.uploads.size() == firstUpload + 3);
+  assert(bus.uploads[firstUpload].command == 0x13);
+  assert(visible(bus.uploads[firstUpload]) == std::vector<uint8_t>(4, 0x00));
+  assert(bus.uploads[firstUpload + 1].command == 0x10);
+  assert(visible(bus.uploads[firstUpload + 1]) == std::vector<uint8_t>(4, 0xFF));
+  assert(bus.uploads[firstUpload + 2].command == 0x10);
+  assert(visible(bus.uploads[firstUpload + 2]) == std::vector<uint8_t>(4, 0x00));
+}
+
 int main() {
   test_async_target_is_driver_owned();
   test_fast_window_and_gray_plane_restore();
   test_sleep_forces_strong_refresh();
+  test_explicit_conditioning_redrive();
   std::puts("PASS: UC8279 X4 recording-bus refresh pipelines");
 }

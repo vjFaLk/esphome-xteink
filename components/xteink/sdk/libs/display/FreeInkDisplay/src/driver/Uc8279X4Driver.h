@@ -129,6 +129,7 @@ class Uc8279X4Driver : public PanelDriver {
   bool displayStart(EpdBus& bus, const uint8_t* fb, const uint8_t* prev, RefreshMode mode, bool turnOff) override;
   void displayFinish(EpdBus& bus, const uint8_t* fb) override;
   bool supportsAsyncDisplay() const override { return true; }
+  bool supportsConditioningRedrive() const override { return true; }
   void seedPreviousFrame(EpdBus& bus, const uint8_t* buf) override;
 
   void requestResync(uint8_t settlePasses) override;
