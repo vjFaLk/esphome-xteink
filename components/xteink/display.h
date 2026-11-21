@@ -24,6 +24,7 @@ class XteinkDisplay : public display::DisplayBuffer {
     this->grayscale_strategy_ = static_cast<GrayscaleStrategy>(strategy);
   }
   void set_grayscale_settle_time(uint32_t settle_time) { this->grayscale_settle_time_ = settle_time; }
+  void set_grayscale_windowed_upload(bool enabled) { this->grayscale_windowed_upload_ = enabled; }
   void postpone_grayscale_settle();
   void prepare_page_change();
   // Render into the host framebuffer without touching controller RAM or the
@@ -90,6 +91,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   bool retained_frame_adopted_{false};
   bool grayscale_dirty_valid_{false};
   bool grayscale_dirty_full_{false};
+  bool grayscale_windowed_upload_{false};
   int grayscale_dirty_x0_{0};
   int grayscale_dirty_y0_{0};
   int grayscale_dirty_x1_{0};

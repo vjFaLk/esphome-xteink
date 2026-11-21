@@ -31,7 +31,7 @@ class FreeInkDisplay {
   ~FreeInkDisplay() = default;
 
   // Refresh modes (public contract — full / balanced-half / fast).
-  enum RefreshMode { FULL_REFRESH, HALF_REFRESH, FAST_REFRESH, CONDITIONING_REDRIVE };
+  enum RefreshMode { FULL_REFRESH, HALF_REFRESH, FAST_REFRESH, CONDITIONING_REDRIVE, CONDITIONING_SCRUB };
 
   // Select panel geometry/controller before begin().
   void setDisplayX3();
@@ -130,6 +130,9 @@ class FreeInkDisplay {
   // (full buffers or consecutive strips per plane) before displayGrayBuffer().
   // False means the requested mode is unavailable; no base was painted.
   bool displayGrayscaleBase(GrayscaleMode mode, RefreshMode fallback = HALF_REFRESH, bool turnOffScreen = false);
+  // Supply Overlay masks before the base transition so a panel driver can
+  // precondition pixels that will become gray in the subsequent pass.
+  void prepareGrayscaleOverlayTarget(const uint8_t* lsbBuffer, const uint8_t* msbBuffer);
   void copyGrayscaleBuffers(const uint8_t* lsbBuffer, const uint8_t* msbBuffer);
   void copyGrayscaleLsbBuffers(const uint8_t* lsbBuffer);
   void copyGrayscaleMsbBuffers(const uint8_t* msbBuffer);
@@ -156,6 +159,7 @@ class FreeInkDisplay {
   // Limit the next grayscale settle to a visible-panel rectangle. Passing a
   // zero width or height disables the window and selects the full panel.
   void setGrayscaleWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h);
+  void setGrayscaleWindowedUpload(bool enabled);
 #ifndef EINK_DISPLAY_SINGLE_BUFFER_MODE
   // Restore controller RAM and frameBuffer to the BW baseline after grayscale.
   // Uses frameBufferActive as the source (falls back to frameBuffer when the

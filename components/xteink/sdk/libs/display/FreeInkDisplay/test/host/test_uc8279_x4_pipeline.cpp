@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <vector>
 
+#include <BoardConfig.h>
+
 #include "driver/Uc8279X4Driver.h"
 
 using freeink::EpdBus;
@@ -86,6 +88,19 @@ static void test_fast_window_and_gray_plane_restore() {
   assert(visible(bus.uploads[grayUploads + 1]) == plane1);
   assert(visible(bus.uploads[grayUploads + 2]) == std::vector<uint8_t>(base2, base2 + 4));
   assert(visible(bus.uploads[grayUploads + 3]) == std::vector<uint8_t>(base2, base2 + 4));
+
+  driver.powerOffRetainingState(bus);
+  const size_t preconditionStart = bus.commands.size();
+  driver.beginGrayscale(bus, base2, GrayscaleMode::Overlay, RefreshMode::Fast, false);
+  const size_t preconditionPsr = command_after(bus.commands, 0x00, preconditionStart);
+  const size_t preconditionLut = command_after(bus.commands, 0x20, preconditionPsr + 1);
+  const size_t preconditionPon = command_after(bus.commands, 0x04, preconditionLut + 1);
+  const size_t preconditionPtl = command_after(bus.commands, 0x90, preconditionPon + 1);
+  const size_t finalPsr = command_after(bus.commands, 0x00, preconditionPtl + 1);
+  const size_t preconditionDrf = command_after(bus.commands, 0x12, finalPsr + 1);
+  assert(preconditionPsr < preconditionLut && preconditionLut < preconditionPon &&
+         preconditionPon < preconditionPtl && preconditionPtl < finalPsr &&
+         finalPsr < preconditionDrf);
 }
 
 static void test_sleep_forces_strong_refresh() {
@@ -124,10 +139,233 @@ static void test_explicit_conditioning_redrive() {
   assert(visible(bus.uploads[firstUpload + 2]) == std::vector<uint8_t>(4, 0x00));
 }
 
+static void test_half_keeps_absolute_gc_and_scrub_is_explicit() {
+  uint8_t black[] = {0, 0, 0, 0};
+  {
+    EpdBus bus;
+    Uc8279X4Driver driver;
+    driver.begin(bus);
+    driver.display(bus, black, nullptr, RefreshMode::Half, false);
+    assert(bus.uploads.size() >= 2);
+    assert(bus.uploads[0].command == 0x13);
+    assert(bus.uploads[1].command == 0x10);
+    assert(visible(bus.uploads[1]) == std::vector<uint8_t>(4, 0xFF));
+  }
+  {
+    EpdBus bus;
+    Uc8279X4Driver driver;
+    driver.begin(bus);
+    driver.display(bus, black, nullptr, RefreshMode::ConditioningScrub, false);
+    assert(bus.uploads.size() >= 2);
+    assert(bus.uploads[0].command == 0x13);
+    assert(bus.uploads[1].command == 0x10);
+    assert(visible(bus.uploads[1]) == std::vector<uint8_t>(4, 0xFF));
+  }
+
+  uint8_t white[] = {0xFF, 0xFF, 0xFF, 0xFF};
+  {
+    EpdBus bus;
+    Uc8279X4Driver driver;
+    driver.begin(bus);
+    driver.display(bus, white, nullptr, RefreshMode::Half, false);
+    assert(bus.uploads.size() >= 2);
+    assert(bus.uploads[1].command == 0x10);
+    assert(visible(bus.uploads[1]) == std::vector<uint8_t>(4, 0xFF));
+  }
+  EpdBus bus;
+  Uc8279X4Driver driver;
+  driver.begin(bus);
+  driver.display(bus, white, nullptr, RefreshMode::ConditioningScrub, false);
+  assert(visible(bus.uploads[1]) == std::vector<uint8_t>(4, 0x00));
+}
+
+static void test_selective_precondition_resets_gray_without_driving_static_bw() {
+  EpdBus bus;
+  Uc8279X4Driver driver(freeink::uc8279X4DefaultConfig(),
+                        freeink::uc8279X4DefaultPipelines());
+  driver.begin(bus);
+  uint8_t black[] = {0, 0, 0, 0};
+  uint8_t gray[] = {0x80, 0, 0, 0};
+  driver.beginGrayscale(bus, black, GrayscaleMode::Overlay, RefreshMode::Full, false);
+  driver.copyGrayscaleLsb(bus, gray);
+  driver.copyGrayscaleMsb(bus, gray);
+  driver.displayGray(bus, black, false, nullptr, false);
+
+  uint8_t target[] = {0x01, 0, 0, 0};
+  driver.powerOffRetainingState(bus);
+  const size_t uploadStart = bus.uploads.size();
+  const size_t commandStart = bus.commands.size();
+  const size_t dataStart = bus.dataWrites.size();
+  driver.beginGrayscale(bus, target, GrayscaleMode::Overlay, RefreshMode::Fast, false);
+  assert(bus.uploads.size() == uploadStart + 3);
+  assert(bus.uploads[uploadStart].command == 0x13);
+  assert(visible(bus.uploads[uploadStart]) == std::vector<uint8_t>(target, target + 4));
+  assert(bus.uploads[uploadStart + 1].command == 0x10);
+  assert(visible(bus.uploads[uploadStart + 1]) == std::vector<uint8_t>({0x80, 0, 0, 0}));
+  assert(bus.uploads[uploadStart + 2].command == 0x10);
+  assert(visible(bus.uploads[uploadStart + 2]) == std::vector<uint8_t>(target, target + 4));
+  const size_t configPsr = command_after(bus.commands, 0x00, commandStart);
+  const size_t lut = command_after(bus.commands, 0x20, configPsr + 1);
+  const size_t pon = command_after(bus.commands, 0x04, lut + 1);
+  const size_t ptl = command_after(bus.commands, 0x90, pon + 1);
+  const size_t finalPsr = command_after(bus.commands, 0x00, ptl + 1);
+  const size_t drf = command_after(bus.commands, 0x12, finalPsr + 1);
+  assert(configPsr < lut && lut < pon && pon < ptl && ptl < finalPsr && finalPsr < drf);
+
+  unsigned noDriveTables = 0;
+  unsigned transitionTables = 0;
+  for (size_t i = dataStart; i < bus.dataWrites.size(); ++i) {
+    const auto& write = bus.dataWrites[i];
+    if (write.command == 0x21 || write.command == 0x24) {
+      assert(write.data.size() == 42);
+      assert(std::all_of(write.data.begin(), write.data.end(), [](uint8_t b) { return b == 0; }));
+      ++noDriveTables;
+    } else if (write.command == 0x22 || write.command == 0x23) {
+      assert(write.data.size() == 42);
+      assert(std::any_of(write.data.begin(), write.data.end(), [](uint8_t b) { return b != 0; }));
+      ++transitionTables;
+    }
+  }
+  assert(noDriveTables == 2 && transitionTables == 2);
+
+  driver.copyGrayscaleLsb(bus, gray);
+  driver.copyGrayscaleMsb(bus, gray);
+  driver.displayGray(bus, target, false, nullptr, false);
+  driver.preserveGrayscaleOnFastRefresh();
+  uint8_t preview[] = {0x81, 0, 0, 0};
+  driver.display(bus, preview, nullptr, RefreshMode::Fast, false);
+  const size_t previewSettleUploads = bus.uploads.size();
+  driver.beginGrayscale(bus, preview, GrayscaleMode::Overlay, RefreshMode::Fast, false);
+  assert(bus.uploads[previewSettleUploads + 1].command == 0x10);
+  assert(visible(bus.uploads[previewSettleUploads + 1]) ==
+         std::vector<uint8_t>(preview, preview + 4));
+}
+
+static void test_new_gray_pixels_are_preconditioned_before_overlay() {
+  EpdBus bus;
+  Uc8279X4Driver driver(freeink::uc8279X4DefaultConfig(),
+                        freeink::uc8279X4DefaultPipelines());
+  driver.begin(bus);
+  uint8_t black[] = {0, 0, 0, 0};
+  uint8_t empty[] = {0, 0, 0, 0};
+  driver.beginGrayscale(bus, black, GrayscaleMode::Overlay, RefreshMode::Full, false);
+  driver.copyGrayscaleLsb(bus, empty);
+  driver.copyGrayscaleMsb(bus, empty);
+  driver.displayGray(bus, black, false, nullptr, false);
+
+  // The requested window covers row 0; the new gray pixel is in row 3.
+  // Both precondition and overlay must cover row 3, and the first pass must
+  // drive white-to-black there even though it was previously plain black.
+  uint8_t targetLsb[] = {0, 0, 0, 0};
+  uint8_t targetMsb[] = {0, 0, 0, 0x40};
+  driver.setGrayscaleWindow(0, 0, 8, 1);
+  driver.prepareGrayscaleOverlayTarget(targetLsb, targetMsb);
+  const size_t uploadStart = bus.uploads.size();
+  const size_t dataStart = bus.dataWrites.size();
+  driver.beginGrayscale(bus, black, GrayscaleMode::Overlay, RefreshMode::Fast, false);
+  assert(bus.uploads[uploadStart + 1].command == 0x10);
+  assert(visible(bus.uploads[uploadStart + 1])[3] == 0x40);
+  std::vector<uint8_t> ptl;
+  for (size_t i = dataStart; i < bus.dataWrites.size(); ++i)
+    if (bus.dataWrites[i].command == 0x90)
+      ptl.insert(ptl.end(), bus.dataWrites[i].data.begin(), bus.dataWrites[i].data.end());
+  assert(ptl.size() == 9);
+  assert(ptl[6] == 0 && ptl[7] == 123);  // row 3 plus 120-gate offset
+
+  driver.copyGrayscaleLsb(bus, targetLsb);
+  driver.copyGrayscaleMsb(bus, targetMsb);
+  driver.displayGray(bus, black, false, nullptr, false);
+}
+
+static void test_gray_window_preserves_requested_geometry() {
+  const uint16_t originalWidth = BoardConfig::ACTIVE.displayWidth;
+  BoardConfig::ACTIVE.displayWidth = 32;
+  EpdBus bus;
+  Uc8279X4Driver driver(freeink::uc8279X4DefaultConfig(),
+                        freeink::uc8279X4DefaultPipelines());
+  driver.begin(bus);
+  uint8_t black[16] = {};
+  driver.beginGrayscale(bus, black, GrayscaleMode::Overlay, RefreshMode::Full, false);
+  driver.copyGrayscaleLsb(bus, black);
+  driver.copyGrayscaleMsb(bus, black);
+  driver.displayGray(bus, black, false, nullptr, false);
+
+  driver.setGrayscaleWindow(8, 1, 8, 2);
+  const size_t dataStart = bus.dataWrites.size();
+  const size_t uploadStart = bus.uploads.size();
+  driver.beginGrayscale(bus, black, GrayscaleMode::Overlay, RefreshMode::Fast, false);
+  std::vector<uint8_t> ptl;
+  for (size_t i = dataStart; i < bus.dataWrites.size(); ++i)
+    if (bus.dataWrites[i].command == 0x90)
+      ptl.insert(ptl.end(), bus.dataWrites[i].data.begin(), bus.dataWrites[i].data.end());
+  assert(ptl.size() == 9);
+  assert(ptl[0] == 0 && ptl[1] == 8 && ptl[2] == 0 && ptl[3] == 15);
+  assert(ptl[4] == 0 && ptl[5] == 121 && ptl[6] == 0 && ptl[7] == 122);
+  // Window policy does not change the image-plane byte order.
+  assert(bus.uploads[uploadStart].command == 0x13);
+  BoardConfig::ACTIVE.displayWidth = originalWidth;
+}
+
+static void test_windowed_gray_upload_matches_full_plane_slice() {
+  const uint16_t originalWidth = BoardConfig::ACTIVE.displayWidth;
+  BoardConfig::ACTIVE.displayWidth = 32;
+
+  auto upload = [](bool packed) {
+    EpdBus bus;
+    Uc8279X4Driver driver;
+    driver.begin(bus);
+    uint8_t base[16] = {};
+    uint8_t empty[16] = {};
+    driver.beginGrayscale(bus, base, GrayscaleMode::Overlay, RefreshMode::Full, false);
+    driver.copyGrayscaleLsb(bus, empty);
+    driver.copyGrayscaleMsb(bus, empty);
+    driver.displayGray(bus, base, false, nullptr, false);
+
+    uint8_t gray[16] = {};
+    gray[5] = 0xA5;  // x=8..15, visible row 1
+    driver.setGrayscaleWindow(8, 1, 8, 2);
+    driver.setGrayscaleWindowedUpload(packed);
+    driver.beginGrayscale(bus, base, GrayscaleMode::Overlay, RefreshMode::Fast, false);
+    driver.copyGrayscaleLsb(bus, gray);
+    driver.copyGrayscaleMsb(bus, gray);
+    const size_t firstUpload = bus.uploads.size();
+    const size_t firstCommand = bus.commands.size();
+    driver.displayGray(bus, base, false, nullptr, false);
+    assert(bus.uploads.size() == firstUpload + 4);
+    assert(bus.uploads[firstUpload].command == 0x10);
+    assert(bus.uploads[firstUpload + 1].command == 0x13);
+    if (packed) {
+      const auto& commands = bus.commands;
+      const size_t ptin = command_after(commands, 0x91, firstCommand);
+      const size_t ptl = command_after(commands, 0x90, ptin + 1);
+      const size_t dtm1 = command_after(commands, 0x10, ptl + 1);
+      const size_t dtm2 = command_after(commands, 0x13, dtm1 + 1);
+      const size_t ptout = command_after(commands, 0x92, dtm2 + 1);
+      assert(ptin < ptl && ptl < dtm1 && dtm1 < dtm2 && dtm2 < ptout);
+    }
+    return std::vector<EpdBus::PlaneUpload>{bus.uploads[firstUpload], bus.uploads[firstUpload + 1]};
+  };
+
+  const auto full = upload(false);
+  const auto packed = upload(true);
+  for (size_t plane = 0; plane < 2; ++plane) {
+    assert(full[plane].data.size() == 600 * 4);
+    assert(packed[plane].data.size() == 2);
+    assert(packed[plane].data[0] == full[plane].data[121 * 4 + 1]);
+    assert(packed[plane].data[1] == full[plane].data[122 * 4 + 1]);
+  }
+  BoardConfig::ACTIVE.displayWidth = originalWidth;
+}
+
 int main() {
   test_async_target_is_driver_owned();
   test_fast_window_and_gray_plane_restore();
   test_sleep_forces_strong_refresh();
   test_explicit_conditioning_redrive();
+  test_half_keeps_absolute_gc_and_scrub_is_explicit();
+  test_selective_precondition_resets_gray_without_driving_static_bw();
+  test_new_gray_pixels_are_preconditioned_before_overlay();
+  test_gray_window_preserves_requested_geometry();
+  test_windowed_gray_upload_matches_full_plane_slice();
   std::puts("PASS: UC8279 X4 recording-bus refresh pipelines");
 }

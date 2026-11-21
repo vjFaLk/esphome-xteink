@@ -17,6 +17,7 @@ CONF_FULL_REFRESH_EVERY = "full_refresh_every"
 CONF_GRAYSCALE = "grayscale"
 CONF_GRAYSCALE_STRATEGY = "grayscale_strategy"
 CONF_GRAYSCALE_SETTLE_TIME = "grayscale_settle_time"
+CONF_GRAYSCALE_WINDOWED_UPLOAD = "grayscale_windowed_upload"
 
 REFRESH_MODES = {
     "full": 0,
@@ -45,6 +46,7 @@ CONFIG_SCHEMA = display.FULL_DISPLAY_SCHEMA.extend(
         cv.Optional(CONF_GRAYSCALE_SETTLE_TIME, default="5s"): (
             cv.positive_time_period_milliseconds
         ),
+        cv.Optional(CONF_GRAYSCALE_WINDOWED_UPLOAD, default=False): cv.boolean,
     }
 ).extend(cv.polling_component_schema("1s"))
 
@@ -56,6 +58,8 @@ def _final_validate(config):
         )
     if not config[CONF_GRAYSCALE] and CONF_GRAYSCALE_STRATEGY in config:
         raise cv.Invalid("grayscale_strategy requires grayscale: true")
+    if config[CONF_GRAYSCALE_WINDOWED_UPLOAD] and not config[CONF_GRAYSCALE]:
+        raise cv.Invalid("grayscale_windowed_upload requires grayscale: true")
     return config
 
 
@@ -68,6 +72,7 @@ async def to_code(config):
     cg.add(var.set_refresh_mode(config[CONF_REFRESH_MODE]))
     cg.add(var.set_full_refresh_every(config[CONF_FULL_REFRESH_EVERY]))
     cg.add(var.set_grayscale(config[CONF_GRAYSCALE]))
+    cg.add(var.set_grayscale_windowed_upload(config[CONF_GRAYSCALE_WINDOWED_UPLOAD]))
     cg.add(
         var.set_grayscale_strategy(
             config.get(CONF_GRAYSCALE_STRATEGY, GRAYSCALE_STRATEGIES["native"])

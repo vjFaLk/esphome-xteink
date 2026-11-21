@@ -61,12 +61,16 @@ struct EpdPins { int8_t busy = 0; };
 class EpdBus {
  public:
   struct PlaneUpload { uint8_t command; std::vector<uint8_t> data; };
+  struct DataWrite { uint8_t command; std::vector<uint8_t> data; };
   std::vector<uint8_t> commands;
   std::vector<PlaneUpload> uploads;
+  std::vector<DataWrite> dataWrites;
   void reset(uint16_t = 0) {}
   void cmd(uint8_t command) { current_ = command; commands.push_back(command); }
-  void data(uint8_t) {}
-  void data(const uint8_t*, uint16_t) {}
+  void data(uint8_t value) { dataWrites.push_back({current_, {value}}); }
+  void data(const uint8_t* bytes, uint16_t size) {
+    dataWrites.push_back({current_, std::vector<uint8_t>(bytes, bytes + size)});
+  }
   void beginTxn() {
     if (current_ == 0x10 || current_ == 0x13) uploads.push_back({current_, {}});
   }

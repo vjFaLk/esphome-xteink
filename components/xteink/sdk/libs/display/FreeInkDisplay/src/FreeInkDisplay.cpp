@@ -67,6 +67,8 @@ RefreshMode toInternal(FreeInkDisplay::RefreshMode m) {
       return RefreshMode::Half;
     case FreeInkDisplay::CONDITIONING_REDRIVE:
       return RefreshMode::ConditioningRedrive;
+    case FreeInkDisplay::CONDITIONING_SCRUB:
+      return RefreshMode::ConditioningScrub;
     default:
       return RefreshMode::Fast;
   }
@@ -839,6 +841,10 @@ void FreeInkDisplay::setGrayscaleWindow(uint16_t x, uint16_t y, uint16_t w, uint
   if (_driver) _driver->setGrayscaleWindow(x, y, w, h);
 }
 
+void FreeInkDisplay::setGrayscaleWindowedUpload(bool enabled) {
+  if (_driver) _driver->setGrayscaleWindowedUpload(enabled);
+}
+
 void FreeInkDisplay::displayGrayCalibration(uint16_t customX, uint16_t customY, uint16_t customW, uint16_t customH) {
   cancelGrayscalePass();
   if (_inverted) return;
@@ -892,6 +898,10 @@ bool FreeInkDisplay::displayGrayscaleBase(GrayscaleMode mode, RefreshMode fallba
   _grayscaleMode = mode;
   _grayRows[0] = _grayRows[1] = 0;
   return true;
+}
+
+void FreeInkDisplay::prepareGrayscaleOverlayTarget(const uint8_t* lsbBuffer, const uint8_t* msbBuffer) {
+  if (_driver) _driver->prepareGrayscaleOverlayTarget(lsbBuffer, msbBuffer);
 }
 
 void FreeInkDisplay::displayGrayscaleBase(RefreshMode fallback, bool turnOffScreen) {

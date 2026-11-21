@@ -19,7 +19,7 @@
 
 namespace freeink {
 
-enum class RefreshMode : uint8_t { Full, Half, Fast, ConditioningRedrive };
+enum class RefreshMode : uint8_t { Full, Half, Fast, ConditioningRedrive, ConditioningScrub };
 enum class GrayPlane : uint8_t { Lsb, Msb };
 
 struct PanelGeometry {
@@ -145,6 +145,13 @@ class PanelDriver {
     displayGrayscaleBase(bus, fb, fallback, turnOff);
   }
 
+  // Optional hint for a synchronous Overlay base transition. The masks remain
+  // owned by the caller and are valid until beginGrayscale() returns.
+  virtual void prepareGrayscaleOverlayTarget(const uint8_t* lsb, const uint8_t* msb) {
+    (void)lsb;
+    (void)msb;
+  }
+
   // Grayscale preconditioning settle pass (OEM X3 "AA-pre-BW(mid)"), windowed
   // to the panel rect [x, x+w) x [y, y+h) like the OEM's PTL usage; fire after
   // the BW base frame is displayed, before grayscale planes are written.
@@ -209,6 +216,8 @@ class PanelDriver {
     (void)w;
     (void)h;
   }
+  // Upload only the byte-aligned PTL rectangle for X4 gray planes.
+  virtual void setGrayscaleWindowedUpload(bool enabled) { (void)enabled; }
 
   // --- optional, controller-specific hooks (no-op by default) ---
   virtual void requestResync(uint8_t settlePasses) { (void)settlePasses; }

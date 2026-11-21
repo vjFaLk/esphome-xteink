@@ -61,6 +61,7 @@ void XteinkDisplay::setup() {
     return;
 
   auto &epd = this->parent_->display();
+  epd.setGrayscaleWindowedUpload(this->grayscale_windowed_upload_);
   if (this->uses_native_grayscale_planes_()) {
     const auto mode = this->grayscale_strategy_ == GRAYSCALE_ADAPTIVE ? freeink::GrayscaleMode::Overlay
                                                                       : freeink::GrayscaleMode::Absolute;
@@ -496,14 +497,6 @@ void XteinkDisplay::prepare_page_change() {
   if (this->grayscale_strategy_ != GRAYSCALE_ADAPTIVE || !this->grayscale_available_)
     return;
 
-  // This is intentionally one line per explicit page change, rather than per
-  // LVGL flush. It lets hardware testing distinguish a page that really had
-  // native gray on-panel from a binary fast refresh that merely left pixels at
-  // intermediate optical charge.
-  ESP_LOGD(TAG, "Page change: native_gray=%s settled=%s pending=%s partial_count=%lu",
-           YESNO(this->native_grayscale_on_panel_), YESNO(this->grayscale_has_settled_),
-           YESNO(this->grayscale_settle_pending_), static_cast<unsigned long>(this->partial_refresh_count_));
-
   this->mark_grayscale_full_();
   if (!this->grayscale_has_settled_)
     return;
@@ -588,6 +581,56 @@ bool XteinkDisplay::settle_grayscale() {
     this->grayscale_settle_pending_ = false;
     return false;
   }
+  // LVGL can repaint a widget by clearing it and drawing the same pixels back.
+  // Per-pixel write tracking sees the transient clear, even when the completed
+  // frame is identical to the gray image already on the glass. Re-running the
+  // precondition waveform in that case repeatedly drives static gray objects
+  // and can leave a column visibly overcharged. Compare the completed four-
+  // level image against the last settled base and gray masks before panel I/O.
+  if (this->grayscale_has_settled_ && this->native_grayscale_on_panel_ && !this->refresh_pending_ &&
+      this->grayscale_dirty_valid_ && !this->grayscale_dirty_full_) {
+    auto &epd = this->parent_->display();
+    const uint8_t *base = epd.getActiveFrameBuffer();
+    bool changed = base == nullptr;
+    const int width = epd.getDisplayWidth();
+    const int stride = epd.getDisplayWidthBytes();
+    int changed_x0 = width;
+    int changed_y0 = epd.getDisplayHeight();
+    int changed_x1 = -1;
+    int changed_y1 = -1;
+    for (int y = this->grayscale_dirty_y0_; y <= this->grayscale_dirty_y1_ && base != nullptr; ++y) {
+      for (int x = this->grayscale_dirty_x0_; x <= this->grayscale_dirty_x1_; ++x) {
+        const size_t plane_idx = static_cast<size_t>(y) * stride + (x >> 3);
+        const uint8_t bit = static_cast<uint8_t>(0x80 >> (x & 7));
+        const uint8_t old_level = (base[plane_idx] & bit) ? 3 :
+                                  (this->gray_lsb_[plane_idx] & bit) ? 1 :
+                                  (this->gray_msb_[plane_idx] & bit) ? 2 : 0;
+        const uint8_t new_level = static_cast<uint8_t>(
+            (this->gray_luma_[static_cast<size_t>(y) * width + x] * 3U + 127U) / 255U);
+        if (old_level != new_level) {
+          changed = true;
+          changed_x0 = std::min(changed_x0, x);
+          changed_y0 = std::min(changed_y0, y);
+          changed_x1 = std::max(changed_x1, x);
+          changed_y1 = std::max(changed_y1, y);
+        }
+      }
+    }
+    if (!changed) {
+      this->cancel_timeout("grayscale_settle");
+      this->grayscale_settle_pending_ = false;
+      this->clear_grayscale_dirty_();
+      this->buffer_dirty_ = false;
+      epd.syncWriteBufferFromActive();
+      return false;
+    }
+    if (base != nullptr) {
+      this->grayscale_dirty_x0_ = changed_x0;
+      this->grayscale_dirty_y0_ = changed_y0;
+      this->grayscale_dirty_x1_ = changed_x1;
+      this->grayscale_dirty_y1_ = changed_y1;
+    }
+  }
   // Timer-wake shutdown can request the final native-gray frame immediately
   // after LVGL submits its dithered preview. Drain that pending waveform first
   // so the settled frame is guaranteed to reach the panel before deep sleep.
@@ -611,18 +654,10 @@ bool XteinkDisplay::settle_grayscale() {
     // and damaged digit strokes. Connected-component expansion still prevents
     // this padding from pulling unrelated widgets into the update.
     constexpr int MARGIN = 12;
-    int x0 = std::max(0, this->grayscale_dirty_x0_ - MARGIN);
+    const int x0 = std::max(0, this->grayscale_dirty_x0_ - MARGIN);
     const int y0 = std::max(0, this->grayscale_dirty_y0_ - MARGIN);
-    int x1 = std::min(epd.getDisplayWidth() - 1, this->grayscale_dirty_x1_ + MARGIN);
+    const int x1 = std::min(epd.getDisplayWidth() - 1, this->grayscale_dirty_x1_ + MARGIN);
     const int y1 = std::min(epd.getDisplayHeight() - 1, this->grayscale_dirty_y1_ + MARGIN);
-    // A partial-window edge close to the panel edge can leave a vertical
-    // waveform seam through unrelated content. The right gauge ends beneath
-    // the battery label, so its padded PTL edge otherwise crosses that label.
-    // Put such edges outside the visible glass while retaining the other three
-    // sides of the localized update.
-    constexpr int EDGE_SNAP = 32;
-    if (x0 <= EDGE_SNAP) x0 = 0;
-    if (epd.getDisplayWidth() - 1 - x1 <= EDGE_SNAP) x1 = epd.getDisplayWidth() - 1;
     epd.setGrayscaleWindow(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
   } else {
     epd.setGrayscaleWindow(0, 0, 0, 0);
@@ -631,6 +666,7 @@ bool XteinkDisplay::settle_grayscale() {
   // drives only intermediate-gray pixels after a differential B/W base. Keep
   // the explicit native strategy on Absolute for full grayscale images.
   this->render_grayscale_overlay_();
+  epd.prepareGrayscaleOverlayTarget(this->gray_lsb_, this->gray_msb_);
   // Fast lets the controller move from the dither preview to the overlay's
   // solid B/W base with its differential preconditioning waveform; the gray
   // pass then drives only the intermediate-level masks.
@@ -779,14 +815,9 @@ bool XteinkDisplay::condition_panel_step(uint8_t step) {
     }
     const uint8_t pass = step - first_transaction;
     if (phase.kind == Kind::GraySweep) {
-      ESP_LOGD(TAG, "Panel conditioning transaction %u/%u (gray %u)", step + 1,
-               CONDITIONING_TRANSACTION_COUNT, pass);
       return show_gray(pass);
     }
-    ESP_LOGD(TAG, "Panel conditioning transaction %u/%u (%s %s)", step + 1,
-             CONDITIONING_TRANSACTION_COUNT, phase.value == 0 ? "black" : "white",
-             phase.kind == Kind::Scrub ? "scrub" : "redrive");
-    show_bw(phase.value, phase.kind == Kind::Scrub ? EInkDisplay::HALF_REFRESH
+    show_bw(phase.value, phase.kind == Kind::Scrub ? EInkDisplay::CONDITIONING_SCRUB
                                                   : EInkDisplay::CONDITIONING_REDRIVE);
     return true;
   }

@@ -70,6 +70,7 @@ enum class Uc8279X4RefreshStep : uint8_t {
   UploadNewTarget,
   UploadOldWhite,
   UploadOldComplementTarget,
+  UploadGrayAwareOld,
   UploadGrayPlanes,
   ConfigureBwFull,
   ConfigureBwFast,
@@ -153,12 +154,14 @@ class Uc8279X4Driver : public PanelDriver {
   // external-LUT tables for — that panel runs OTP waveforms only.
   GrayscaleCapabilities grayscaleCapabilities(GrayscaleMode mode = GrayscaleMode::Overlay) const override;
   void beginGrayscale(EpdBus& bus, const uint8_t* fb, GrayscaleMode mode, RefreshMode fallback, bool turnOff) override;
+  void prepareGrayscaleOverlayTarget(const uint8_t* lsb, const uint8_t* msb) override;
   void copyGrayscaleLsb(EpdBus& bus, const uint8_t* lsb) override;
   void copyGrayscaleMsb(EpdBus& bus, const uint8_t* msb) override;
   void displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff, const unsigned char* lut, bool factoryMode) override;
   void cleanupGrayscaleBuffers(EpdBus& bus, const uint8_t* bw) override;
   void preserveGrayscaleOnFastRefresh() override;
   void setGrayscaleWindow(uint16_t x, uint16_t y, uint16_t w, uint16_t h) override;
+  void setGrayscaleWindowedUpload(bool enabled) override { _grayWindowedUpload = enabled; }
   // Base frame for a grayscale overlay. Explicit Full/Half requests use their
   // corresponding B/W pipeline; Fast uses the factory pre-B/W transition when
   // a prior gray reference and exact B/W controller baseline are available.
@@ -169,18 +172,25 @@ class Uc8279X4Driver : public PanelDriver {
   void resetRuntimeState(bool retained);
   bool ensureHostBuffers();
   bool runPipeline(EpdBus& bus, const Uc8279X4RefreshPipeline& pipeline, bool resume);
+  void commitBwTarget(Uc8279X4RefreshState::Pipeline pipeline);
   bool executeStep(EpdBus& bus, Uc8279X4RefreshStep step);
   void configureBwRefresh(EpdBus& bus, bool fast);
   void configureGrayActivation(EpdBus& bus);
   void configureGrayPrecondition(EpdBus& bus);
   const Uc8279X4RefreshPipeline& pipelineFor(Uc8279X4RefreshState::Pipeline pipeline) const;
   uint32_t nextGeneration();
+  struct GrayWindowBounds {
+    uint16_t x0, y0, x1, y1;  // physical visible coordinates, inclusive
+  };
+  GrayWindowBounds grayWindowBounds() const;
   // Stream a framebuffer into a RAM plane: 0xFF padding for gates before the
   // visible offset, visible rows in the stock convention (forward order, bytes
   // as-is; FREEINK_UC8279X4_ROWREV/XMIRROR can flip either axis for future
   // sub-variants), then 0xFF padding to the addressed gate count. `invert`
   // bitwise-inverts the image rows (AA planes only, per the vendor reference).
-  void streamPlane(EpdBus& bus, uint8_t ramCmd, const uint8_t* fb, bool invert = false);
+  // `windowPacked` sends only byte-aligned PTL rows/columns.
+  void streamPlane(EpdBus& bus, uint8_t ramCmd, const uint8_t* fb, bool invert = false,
+                   bool windowPacked = false);
   void powerOnIfNeeded(EpdBus& bus, const char* tag);
   // Stock's non-flashing previous->current AA base transition (FUN_4214d4ac /
   // FUN_4214d3a0). DTM1 holds the previous page's B/W base, DTM2 the new one;
@@ -191,6 +201,7 @@ class Uc8279X4Driver : public PanelDriver {
   void enterGrayscaleWindow(EpdBus& bus);
   void enterFullWindow(EpdBus& bus);
   void expandWindowForBwDelta();
+  void expandWindowForGrayTransition();
   void expandWindowForGrayDelta();
   void includeChangedByte(uint16_t byteX, uint16_t y);
 
@@ -207,6 +218,7 @@ class Uc8279X4Driver : public PanelDriver {
   // immediately after displayStart(), so no finish path may depend on them.
   uint8_t* _bwBaseline = nullptr;
   uint8_t* _bwTarget = nullptr;
+  uint8_t* _bwPreconditionOld = nullptr;
   uint8_t* _grayLsb = nullptr;
   uint8_t* _grayMsb = nullptr;
   // Absolute logical selector planes corresponding to the native-gray image
@@ -215,6 +227,9 @@ class Uc8279X4Driver : public PanelDriver {
   uint8_t* _panelGrayLsb = nullptr;
   uint8_t* _panelGrayMsb = nullptr;
   bool _panelGrayValid{false};
+  // Borrowed only until the synchronous Overlay base transition completes.
+  const uint8_t* _targetOverlayLsb{nullptr};
+  const uint8_t* _targetOverlayMsb{nullptr};
 
   struct GrayJob {
     GrayscaleMode mode{GrayscaleMode::Overlay};
@@ -229,6 +244,7 @@ class Uc8279X4Driver : public PanelDriver {
     uint16_t w{0};
     uint16_t h{0};
   } _window;
+  bool _grayWindowedUpload{false};
 
   struct PipelineCursor {
     const Uc8279X4RefreshPipeline* pipeline{nullptr};

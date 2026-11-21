@@ -18,6 +18,9 @@
 #ifndef FREEINK_UC8279X4_XMIRROR
 #define FREEINK_UC8279X4_XMIRROR 0
 #endif
+#ifdef ESP_PLATFORM
+#include <esp_log.h>
+#endif
 
 namespace freeink {
 namespace {
@@ -134,9 +137,12 @@ constexpr Step kBwRedriveSteps[] = {
     Step::EnterFullWindow, Step::SelectOtp, Step::Activate, Step::AsyncBoundary,
     Step::WaitRefresh, Step::ExitWindow, Step::RestoreOldTarget, Step::PowerOffIfRequested,
 };
+// PON can reload the controller's programmed defaults. Enter PTIN/PTL only
+// after power-on, then reassert external-LUT PSR immediately before DRF.
 constexpr Step kGrayPreconditionSteps[] = {
-    Step::UploadNewTarget, Step::EnterGrayWindow, Step::ConfigureGrayPrecondition, Step::PowerOn,
-    Step::SelectExternal, Step::Activate, Step::WaitRefresh, Step::ExitWindow, Step::RestoreOldTarget,
+    Step::UploadNewTarget, Step::UploadGrayAwareOld,
+    Step::ConfigureGrayPrecondition, Step::PowerOn, Step::EnterGrayWindow, Step::SelectExternal,
+    Step::Activate, Step::WaitRefresh, Step::ExitWindow, Step::RestoreOldTarget,
     Step::PowerOffIfRequested,
 };
 constexpr Step kGrayOverlaySteps[] = {
@@ -212,6 +218,7 @@ Uc8279X4Driver::Uc8279X4Driver(const Uc8279X4Config& cfg, const Uc8279X4RefreshP
 Uc8279X4Driver::~Uc8279X4Driver() {
   free(_bwBaseline);
   free(_bwTarget);
+  free(_bwPreconditionOld);
   free(_grayLsb);
   free(_grayMsb);
   free(_panelGrayLsb);
@@ -262,6 +269,7 @@ void Uc8279X4Driver::resetRuntimeState(bool retained) {
   _grayJob = {};
   _window = {};
   _panelGrayValid = false;
+  _targetOverlayLsb = _targetOverlayMsb = nullptr;
   if (retained)
     _state.retained_boot();
   else
@@ -275,16 +283,18 @@ bool Uc8279X4Driver::ensureHostBuffers() {
     if (buffer == nullptr) buffer = static_cast<uint8_t*>(malloc(_bufferSize));
     return buffer != nullptr;
   };
-  const bool ok = allocate(_bwBaseline) && allocate(_bwTarget) && allocate(_grayLsb) && allocate(_grayMsb) &&
+  const bool ok = allocate(_bwBaseline) && allocate(_bwTarget) && allocate(_bwPreconditionOld) &&
+                  allocate(_grayLsb) && allocate(_grayMsb) &&
                   allocate(_panelGrayLsb) && allocate(_panelGrayMsb);
   if (!ok) {
     free(_bwBaseline);
     free(_bwTarget);
+    free(_bwPreconditionOld);
     free(_grayLsb);
     free(_grayMsb);
     free(_panelGrayLsb);
     free(_panelGrayMsb);
-    _bwBaseline = _bwTarget = _grayLsb = _grayMsb = _panelGrayLsb = _panelGrayMsb = nullptr;
+    _bwBaseline = _bwTarget = _bwPreconditionOld = _grayLsb = _grayMsb = _panelGrayLsb = _panelGrayMsb = nullptr;
   }
   return ok;
 }
@@ -310,25 +320,30 @@ void Uc8279X4Driver::display(EpdBus& bus, const uint8_t* fb, const uint8_t* prev
   displayFinish(bus, fb);
 }
 
-void Uc8279X4Driver::streamPlane(EpdBus& bus, uint8_t ramCmd, const uint8_t* fb, bool invert) {
+void Uc8279X4Driver::streamPlane(EpdBus& bus, uint8_t ramCmd, const uint8_t* fb, bool invert,
+                                 bool windowPacked) {
   uint8_t row[128];
   const uint16_t wb = _wb <= sizeof(row) ? _wb : sizeof(row);
+  const GrayWindowBounds bounds = windowPacked ? grayWindowBounds() :
+      GrayWindowBounds{0, 0, static_cast<uint16_t>(_w - 1), static_cast<uint16_t>(_h - 1)};
+  const uint16_t firstByte = windowPacked ? static_cast<uint16_t>(bounds.x0 / 8) : 0;
+  const uint16_t rowBytes = windowPacked ? static_cast<uint16_t>((bounds.x1 - bounds.x0 + 1) / 8) : wb;
   bus.cmd(ramCmd);
-  // The OEM driver keeps CS asserted across a plane upload. Preserve our validated
-  // gate offset/orientation, but avoid a new SPI transaction for every row.
   bus.beginTxn();
-  // Gates before the visible window (the 120-gate offset): white.
-  memset(row, 0xFF, wb);
-  for (uint16_t y = 0; y < _cfg.gateOffset; y++) bus.rawWriteBytes(row, wb);
-  // Visible rows, stock convention (hardware-confirmed upright): forward order,
-  // bytes as-is. The ROWREV/XMIRROR switches (row reversal / reversed byte order
-  // + reversed bits) exist for future panel sub-variants whose scan differs.
-  // AA planes are sent bitwise-inverted per the vendor reference.
+  const auto writeRow = [&](const uint8_t* bytes) {
+    bus.rawWriteBytes(bytes + firstByte, rowBytes);
+  };
+  // A full-plane upload writes white into the 120 hidden gates before the glass.
+  // A packed PTL upload transmits only rows and columns inside the window.
+  if (!windowPacked) {
+    memset(row, 0xFF, wb);
+    for (uint16_t y = 0; y < _cfg.gateOffset; ++y) writeRow(row);
+  }
   static const uint8_t kBitRev[16] = {0x0, 0x8, 0x4, 0xC, 0x2, 0xA, 0x6, 0xE, 0x1, 0x9, 0x5, 0xD, 0x3, 0xB, 0x7, 0xF};
-  for (uint16_t n = 0; n < _h; n++) {
+  for (uint16_t n = bounds.y0; n <= bounds.y1; ++n) {
     const uint16_t y = FREEINK_UC8279X4_ROWREV ? static_cast<uint16_t>(_h - 1 - n) : n;
     const uint8_t* src = fb + static_cast<uint32_t>(y) * _wb;
-    for (uint16_t i = 0; i < wb; i++) {
+    for (uint16_t i = 0; i < wb; ++i) {
       uint8_t b;
       if (FREEINK_UC8279X4_XMIRROR) {
         const uint8_t m = src[wb - 1 - i];
@@ -338,11 +353,12 @@ void Uc8279X4Driver::streamPlane(EpdBus& bus, uint8_t ramCmd, const uint8_t* fb,
       }
       row[i] = invert ? static_cast<uint8_t>(~b) : b;
     }
-    bus.rawWriteBytes(row, wb);
+    writeRow(row);
   }
-  // Gates after the visible window: white, up to the addressed gate count.
-  memset(row, 0xFF, wb);
-  for (uint16_t y = _cfg.gateOffset + _h; y < _tresH; y++) bus.rawWriteBytes(row, wb);
+  if (!windowPacked) {
+    memset(row, 0xFF, wb);
+    for (uint16_t y = _cfg.gateOffset + _h; y < _tresH; ++y) writeRow(row);
+  }
   bus.endTxn();
 }
 
@@ -382,9 +398,14 @@ void Uc8279X4Driver::configureGrayPrecondition(EpdBus& bus) {
   bus.data(_cfg.ccset);
   bus.cmd(CMD_TSSET);
   bus.data(_cfg.tssetFast);
-  for (const auto& lut : kXtfPreBwMid) {
+  static constexpr uint8_t kNoDrive[PREBW_LUT_LEN] = {};
+  for (size_t i = 0; i < 5; ++i) {
+    const auto& lut = kXtfPreBwMid[i];
     bus.cmd(lut[0]);
-    bus.data(&lut[1], PREBW_LUT_LEN);
+    // In the selective pipeline unchanged B/W pixels receive zero frames.
+    // Prior native-gray pixels are separately staged as OLD != NEW, so they
+    // still take a real B/W transition before the gray overlay.
+    bus.data(i == 1 || i == 4 ? kNoDrive : &lut[1], PREBW_LUT_LEN);
   }
 }
 
@@ -442,7 +463,10 @@ bool Uc8279X4Driver::executeStep(EpdBus& bus, Uc8279X4RefreshStep step) {
   switch (step) {
     case Step::UploadNewTarget:
       if (_bwTarget == nullptr) return false;
-      if (_state.snapshot().pending == Pipeline::GrayPrecondition) expandWindowForBwDelta();
+      if (_state.snapshot().pending == Pipeline::GrayPrecondition) {
+        expandWindowForBwDelta();
+        expandWindowForGrayTransition();
+      }
       streamPlane(bus, CMD_DTM2, _bwTarget);
       return _state.mark_new_target_uploaded();
     case Step::UploadOldWhite:
@@ -452,6 +476,18 @@ bool Uc8279X4Driver::executeStep(EpdBus& bus, Uc8279X4RefreshStep step) {
       if (_bwTarget == nullptr) return false;
       streamPlane(bus, CMD_DTM1, _bwTarget, true);
       return _state.mark_old_complement_uploaded();
+    case Step::UploadGrayAwareOld:
+      if (_bwBaseline == nullptr || _bwTarget == nullptr || _bwPreconditionOld == nullptr) return false;
+      for (uint32_t i = 0; i < _bufferSize; ++i) {
+        const uint8_t previousGray = _panelGrayValid ?
+            static_cast<uint8_t>(_panelGrayLsb[i] ^ _panelGrayMsb[i]) : 0;
+        const uint8_t targetGray = _targetOverlayMsb != nullptr ? _targetOverlayMsb[i] : 0;
+        const uint8_t gray = static_cast<uint8_t>(previousGray | targetGray);
+        _bwPreconditionOld[i] = static_cast<uint8_t>(
+            (_bwBaseline[i] & ~gray) | (static_cast<uint8_t>(~_bwTarget[i]) & gray));
+      }
+      streamPlane(bus, CMD_DTM1, _bwPreconditionOld);
+      return _state.mark_gray_aware_old_uploaded();
     case Step::UploadGrayPlanes: {
       if (_grayLsb == nullptr || _grayMsb == nullptr) return false;
       const Pipeline active = _state.snapshot().pending;
@@ -464,8 +500,13 @@ bool Uc8279X4Driver::executeStep(EpdBus& bus, Uc8279X4RefreshStep step) {
         }
       }
       expandWindowForGrayDelta();
-      streamPlane(bus, CMD_DTM1, _grayLsb, true);
-      streamPlane(bus, CMD_DTM2, _grayMsb, true);
+      // Packing changes only the RAM upload. The AA activation still uses the
+      // requested PTL window, including the known column defect near x=752.
+      const bool packed = active == Pipeline::GrayOverlay && _grayWindowedUpload && _window.enabled;
+      if (packed && !executeStep(bus, Step::EnterGrayWindow)) return false;
+      streamPlane(bus, CMD_DTM1, _grayLsb, true, packed);
+      streamPlane(bus, CMD_DTM2, _grayMsb, true, packed);
+      if (packed && !executeStep(bus, Step::ExitWindow)) return false;
       return _state.mark_gray_planes_in_controller();
     }
     case Step::ConfigureBwFull:
@@ -487,7 +528,7 @@ bool Uc8279X4Driver::executeStep(EpdBus& bus, Uc8279X4RefreshStep step) {
       enterFullWindow(bus);
       return true;
     case Step::EnterGrayWindow:
-      enterGrayscaleWindow(bus);
+      if (!_window.entered) enterGrayscaleWindow(bus);
       return true;
     case Step::SelectOtp:
       bus.cmd(CMD_PANEL_SETTING);
@@ -550,6 +591,10 @@ bool Uc8279X4Driver::runPipeline(EpdBus& bus, const Uc8279X4RefreshPipeline& pip
     const Step step = pipeline.steps[_cursor.nextStep++];
     if (step == Step::AsyncBoundary && !resume) return true;
     if (!executeStep(bus, step)) {
+#ifdef ESP_PLATFORM
+      ESP_LOGE("uc8279x4", "Pipeline %s failed at step %u", pipeline.name,
+               static_cast<unsigned>(step));
+#endif
       _state.cancel();
       _cursor = {};
       return false;
@@ -566,7 +611,7 @@ bool Uc8279X4Driver::displayStart(EpdBus& bus, const uint8_t* fb, const uint8_t*
   memcpy(_bwTarget, fb, _bufferSize);
 
   using Pipeline = Uc8279X4RefreshState::Pipeline;
-  Pipeline selected = mode == RefreshMode::Half ? Pipeline::BwScrub : Pipeline::BwFull;
+  Pipeline selected = mode == RefreshMode::ConditioningScrub ? Pipeline::BwScrub : Pipeline::BwFull;
   if (mode == RefreshMode::ConditioningRedrive) {
     selected = Pipeline::BwRedrive;
   } else if (mode == RefreshMode::Fast) {
@@ -581,16 +626,14 @@ bool Uc8279X4Driver::displayStart(EpdBus& bus, const uint8_t* fb, const uint8_t*
 
   const uint32_t generation = nextGeneration();
   if (!_state.begin_bw(selected, generation)) {
-    selected = mode == RefreshMode::Half ? Pipeline::BwScrub : Pipeline::BwFull;
+    selected = mode == RefreshMode::ConditioningScrub ? Pipeline::BwScrub : Pipeline::BwFull;
     if (!_state.begin_bw(selected, generation)) return false;
   }
 
   _cursor.turnOff = turnOff;
   const bool deferred = runPipeline(bus, pipelineFor(selected), false);
-  if (!deferred && _state.snapshot().pending == selected && _state.complete_bw()) {
-    memcpy(_bwBaseline, _bwTarget, _bufferSize);
-    if (selected != Pipeline::BwFastOverGray) _panelGrayValid = false;
-  }
+  if (!deferred && _state.snapshot().pending == selected && _state.complete_bw())
+    commitBwTarget(selected);
   return deferred;
 }
 
@@ -600,10 +643,27 @@ void Uc8279X4Driver::displayFinish(EpdBus& bus, const uint8_t* fb) {
   const auto pending = _state.snapshot().pending;
   const auto& pipeline = pipelineFor(pending);
   runPipeline(bus, pipeline, true);
-  if (_state.snapshot().pending == pending && _state.complete_bw() && _bwBaseline != nullptr && _bwTarget != nullptr) {
-    memcpy(_bwBaseline, _bwTarget, _bufferSize);
-    if (pending != Uc8279X4RefreshState::Pipeline::BwFastOverGray) _panelGrayValid = false;
+  if (_state.snapshot().pending == pending && _state.complete_bw())
+    commitBwTarget(pending);
+}
+
+void Uc8279X4Driver::commitBwTarget(Uc8279X4RefreshState::Pipeline pipeline) {
+  if (_bwBaseline == nullptr || _bwTarget == nullptr) return;
+  if (pipeline == Uc8279X4RefreshState::Pipeline::BwFastOverGray && _panelGrayValid) {
+    // A B/W preview changes only bits that differ from its old base. Those
+    // pixels are now physically B/W, not the gray levels recorded before the
+    // preview; keep the untouched gray selector bits for the next settle.
+    for (uint32_t i = 0; i < _bufferSize; ++i) {
+      const uint8_t changed = static_cast<uint8_t>(_bwBaseline[i] ^ _bwTarget[i]);
+      _panelGrayLsb[i] = static_cast<uint8_t>((_panelGrayLsb[i] & ~changed) |
+                                               (_bwTarget[i] & changed));
+      _panelGrayMsb[i] = static_cast<uint8_t>((_panelGrayMsb[i] & ~changed) |
+                                               (_bwTarget[i] & changed));
+    }
+  } else {
+    _panelGrayValid = false;
   }
+  memcpy(_bwBaseline, _bwTarget, _bufferSize);
 }
 
 void Uc8279X4Driver::seedPreviousFrame(EpdBus& bus, const uint8_t* buf) {
@@ -712,6 +772,29 @@ void Uc8279X4Driver::expandWindowForBwDelta() {
   }
 }
 
+void Uc8279X4Driver::expandWindowForGrayTransition() {
+  if (!_window.enabled || _targetOverlayLsb == nullptr || _targetOverlayMsb == nullptr) return;
+  const auto& state = _state.snapshot();
+  if (!_panelGrayValid && (!state.baseline_staged || state.panel.content != Uc8279X4RefreshState::PanelContent::Monochrome)) {
+    _window.enabled = false;
+    return;
+  }
+  // The overlay's target selectors are already known at this point. Expand
+  // before the base DRF, so the later gray DRF cannot reach pixels outside
+  // the precondition window.
+  for (uint16_t y = 0; y < _h; ++y) {
+    const uint32_t row = static_cast<uint32_t>(y) * _wb;
+    for (uint16_t x = 0; x < _wb; ++x) {
+      const uint32_t i = row + x;
+      const uint8_t newLsb = static_cast<uint8_t>(_bwTarget[i] | _targetOverlayLsb[i]);
+      const uint8_t newMsb = static_cast<uint8_t>(newLsb ^ _targetOverlayMsb[i]);
+      const uint8_t oldLsb = _panelGrayValid ? _panelGrayLsb[i] : _bwBaseline[i];
+      const uint8_t oldMsb = _panelGrayValid ? _panelGrayMsb[i] : _bwBaseline[i];
+      if (newLsb != oldLsb || newMsb != oldMsb) includeChangedByte(x, y);
+    }
+  }
+}
+
 void Uc8279X4Driver::expandWindowForGrayDelta() {
   if (!_window.enabled) return;
   const auto& state = _state.snapshot();
@@ -739,7 +822,7 @@ void Uc8279X4Driver::enterFullWindow(EpdBus& bus) {
   _window.enabled = saved;
 }
 
-void Uc8279X4Driver::enterGrayscaleWindow(EpdBus& bus) {
+Uc8279X4Driver::GrayWindowBounds Uc8279X4Driver::grayWindowBounds() const {
   uint16_t x0 = 0;
   uint16_t y0 = 0;
   uint16_t x1 = static_cast<uint16_t>(_w - 1);
@@ -764,6 +847,15 @@ void Uc8279X4Driver::enterGrayscaleWindow(EpdBus& bus) {
   x1 = static_cast<uint16_t>(x1 | 0x07U);
   if (x1 >= _w)
     x1 = static_cast<uint16_t>(_w - 1);
+  return {x0, y0, x1, y1};
+}
+
+void Uc8279X4Driver::enterGrayscaleWindow(EpdBus& bus) {
+  const auto bounds = grayWindowBounds();
+  uint16_t x0 = bounds.x0;
+  uint16_t y0 = bounds.y0;
+  uint16_t x1 = bounds.x1;
+  uint16_t y1 = bounds.y1;
   y0 = static_cast<uint16_t>(y0 + _cfg.gateOffset);
   y1 = static_cast<uint16_t>(y1 + _cfg.gateOffset);
 
@@ -781,21 +873,39 @@ void Uc8279X4Driver::enterGrayscaleWindow(EpdBus& bus) {
   _window.entered = true;
 }
 
+void Uc8279X4Driver::prepareGrayscaleOverlayTarget(const uint8_t* lsb, const uint8_t* msb) {
+  _targetOverlayLsb = lsb;
+  _targetOverlayMsb = msb;
+}
+
 void Uc8279X4Driver::beginGrayscale(EpdBus& bus, const uint8_t* fb, GrayscaleMode mode, RefreshMode fallback,
                                     bool turnOff) {
-  if (!ensureHostBuffers() || _state.snapshot().pending != Uc8279X4RefreshState::Pipeline::None) return;
+  if (!ensureHostBuffers() || _state.snapshot().pending != Uc8279X4RefreshState::Pipeline::None) {
+    _targetOverlayLsb = _targetOverlayMsb = nullptr;
+    return;
+  }
   _grayJob = {};
   _grayJob.mode = mode;
   using Pipeline = Uc8279X4RefreshState::Pipeline;
   if (mode == GrayscaleMode::Direct) {
+    _targetOverlayLsb = _targetOverlayMsb = nullptr;
     _state.begin_gray_upload(Pipeline::GrayDirect, nextGeneration());
     return;
   }
-  if (fb == nullptr) return;
+  if (fb == nullptr) {
+    _targetOverlayLsb = _targetOverlayMsb = nullptr;
+    return;
+  }
+  if (mode != GrayscaleMode::Overlay) _targetOverlayLsb = _targetOverlayMsb = nullptr;
   displayGrayscaleBase(bus, fb, fallback, turnOff);
+  _targetOverlayLsb = _targetOverlayMsb = nullptr;
   const uint32_t generation = _state.snapshot().baseline_generation;
-  _state.begin_gray_upload(mode == GrayscaleMode::Absolute ? Pipeline::GrayAbsolute : Pipeline::GrayOverlay,
-                           generation);
+  if (!_state.begin_gray_upload(
+          mode == GrayscaleMode::Absolute ? Pipeline::GrayAbsolute : Pipeline::GrayOverlay, generation)) {
+#ifdef ESP_PLATFORM
+    ESP_LOGE("uc8279x4", "Gray upload could not start after base transition");
+#endif
+  }
 }
 
 void Uc8279X4Driver::copyGrayscaleLsb(EpdBus& bus, const uint8_t* lsb) {
@@ -827,7 +937,12 @@ void Uc8279X4Driver::displayGray(EpdBus& bus, const uint8_t* fb, bool turnOff, c
   (void)fb;
   (void)lut;
   const auto pending = _state.snapshot().pending;
-  if (_state.snapshot().gray_upload != Uc8279X4RefreshState::GrayUpload::Ready) return;
+  if (_state.snapshot().gray_upload != Uc8279X4RefreshState::GrayUpload::Ready) {
+#ifdef ESP_PLATFORM
+    ESP_LOGE("uc8279x4", "Gray activation skipped: planes not ready");
+#endif
+    return;
+  }
   _grayJob.imageQuality = _grayJob.imageQuality || factoryMode || _grayJob.mode != GrayscaleMode::Overlay;
   _cursor.turnOff = turnOff;
   runPipeline(bus, pipelineFor(pending), false);
@@ -860,15 +975,25 @@ void Uc8279X4Driver::transitionGrayscaleBase(EpdBus& bus, const uint8_t* fb, boo
     return;
   }
   _cursor.turnOff = turnOff;
-  if (!runGrayscalePrecondition(bus)) return;
-  if (_state.complete_gray_precondition()) memcpy(_bwBaseline, _bwTarget, _bufferSize);
+  if (!runGrayscalePrecondition(bus)) {
+#ifdef ESP_PLATFORM
+    ESP_LOGE("uc8279x4", "Gray precondition pipeline aborted");
+#endif
+    return;
+  }
+  if (_state.complete_gray_precondition()) {
+    memcpy(_bwBaseline, _bwTarget, _bufferSize);
+  } else {
+#ifdef ESP_PLATFORM
+    ESP_LOGE("uc8279x4", "Gray precondition could not commit its B/W baseline");
+#endif
+  }
 }
 
-// Stock's UC8279_aa_prebw_mid pre-conditioning pass (byte-exact order from
-// Factory.bin FUN_4214d3a0): PTIN -> PTL(full window, +120 gate offset) ->
-// PSR(REG=1) -> PFS -> gate scan -> CDI 0xD7 -> CCSET -> TSSET(fast) -> upload
-// the 5 settle LUTs -> PON -> DRF -> PTOUT. Requires a valid previous page in
-// DTM1 and the new base in DTM2.
+// UC8279_aa_prebw_mid preconditioning uses the factory LUT bytes and B/W
+// transition parameters. PON precedes PTIN/PTL and PSR is reasserted before
+// DRF because this panel reloads register defaults on power-on. DTM1 carries
+// the gray-aware old frame, DTM2 the new B/W base; both are restored afterward.
 bool Uc8279X4Driver::runGrayscalePrecondition(EpdBus& bus) {
   const auto pending = _state.snapshot().pending;
   runPipeline(bus, pipelineFor(pending), false);

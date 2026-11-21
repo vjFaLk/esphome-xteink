@@ -18,6 +18,7 @@ class Uc8279X4RefreshState {
     White,
     BwFrame,
     BwComplement,
+    GrayAwareBwBase,
     GrayPlane0,
     GrayPlane1,
   };
@@ -148,6 +149,13 @@ class Uc8279X4RefreshState {
   bool mark_old_complement_uploaded() {
     if (state_.pending != Pipeline::BwScrub && state_.pending != Pipeline::BwRedrive) return false;
     state_.dtm1 = {PlaneContent::BwComplement, state_.target_generation};
+    return invariant();
+  }
+
+  bool mark_gray_aware_old_uploaded() {
+    if (state_.pending != Pipeline::GrayPrecondition || state_.target_generation == 0)
+      return false;
+    state_.dtm1 = {PlaneContent::GrayAwareBwBase, state_.target_generation};
     return invariant();
   }
 
