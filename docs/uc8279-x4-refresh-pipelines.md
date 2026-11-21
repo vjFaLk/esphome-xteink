@@ -48,9 +48,9 @@ of x=360 showed the column; shifting the start to x=352 cleared it. An
 X=500/width=262 rectangle also showed it, while X=300/width=462 did not.
 Packed AA uploads, plane order, data-stop commands, PSR/PTL order, chip-select
 framing, and several other isolated sequence changes did not remove it. The
-cause remains unknown. No window widening, AA PTL suppression, or other column
-workaround is applied in this branch. Battery digits in the same area may also
-retain strokes during zoned gray updates.
+cause remains unknown. No column-specific window widening, AA PTL suppression,
+or other column workaround is applied in this branch. Battery digits in the
+same area may also retain strokes during zoned gray updates.
 
 ## Validation
 
