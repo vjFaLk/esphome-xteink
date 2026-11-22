@@ -264,12 +264,18 @@ Programmable B/W preparation now performs **inverted image → requested B/W ima
 → hold**. **Waveform B-W Inversion Frames** controls the first phase (0–63;
 zero disables it for comparison). **Waveform B-W Frames** continues to control
 the final target phase. **Waveform B-W Repeats** repeats the complete cycle.
-The new field defaults to 16. During this user's update, the saved 20-count B/W
-target and two repeats were retained, with inversion initially set to 20.
+Inversion and target now default to 20 counts, with one repeat. Existing saved
+values are retained when the device's preference storage permits it.
 
-Before deployment, the user's best current settings were exported: A/B/C=2/3/4,
-rail=2, opposite prefix=3, repeats=1, neutral=1, hold=0, B/W=20 counts ×2,
-Factory OTP preparation, with vertical-window and cropped-upload experiments on.
-Their restoration is checked through the authenticated device API. Preference
-storage previously reported insufficient space, so exported settings remain
-necessary backup evidence; no device NVS erase is performed.
+The user's live settings are exported before deployment and restored through the
+authenticated device API. Preference storage reported insufficient space, so
+exported settings remain necessary backup evidence; no NVS erase is performed.
+
+### Conditioned B/W and starting-image controls
+
+The fourth calibration round adds a separate **Conditioned B-W Drive** option,
+explicit white/black/reference/random-image buttons, exact last-image replay,
+power-safe ownership handoff and command/BUSY timing export. The original simple
+programmable recipe and Factory OTP remain comparison options. See the
+[testing guide](docs/x4-waveform-lab.md) for the full recipe, every control's
+expected effect, RAM-only experimental settings, and timing interpretation.

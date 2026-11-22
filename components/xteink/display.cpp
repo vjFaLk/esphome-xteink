@@ -133,7 +133,7 @@ bool XteinkDisplay::finish_normal_(bool wait) {
   return true;
 }
 bool XteinkDisplay::begin_calibration() {
-  if (calibration_active_) return true;
+  if (calibration_active_) return !exit_requested_;
   if (BoardConfig::ACTIVE.displayController !=
           BoardConfig::DisplayController::UC8279 ||
       get_width_internal() != 800 || get_height_internal() != 480)
@@ -142,21 +142,24 @@ bool XteinkDisplay::begin_calibration() {
   auto* bus = parent_->display().beginControllerSession();
   if (!bus) return false;
   if (!transport_) {
-    transport_.emplace(*bus);
+    transport_.emplace(*bus, []() -> uint32_t { return millis(); });
     lab_.emplace(*transport_);
   }
   if (!lab_->allocate()) {
     parent_->display().endControllerSession();
     return false;
   }
+  transport_->clearTrace();
   transport_->reset();
   lab_->invalidate();
   calibration_active_ = true;
   exit_requested_ = false;
+  exit_shutdown_attempted_ = exit_failed_ = false;
   frozen_ = false;
   enable_loop();
   ESP_LOGW(TAG,
-           "Waveform lab owns display. Rail/hold/end semantics UNCALIBRATED. "
+           "Waveform lab owns display after driver shutdown and reset. "
+           "Rail/hold/end semantics UNCALIBRATED. "
            "No automatic cycles.");
   return true;
 }
@@ -175,6 +178,10 @@ bool XteinkDisplay::run_calibration(bool rebuild, bool rotate,
       return false;
     }
   }
+  configure_lab_();
+  return lab_->start(millis(), rebuild, rotate, conditioning);
+}
+void XteinkDisplay::configure_lab_() {
   for (uint8_t i = 0; i < 3; ++i)
     lab_->parameters[i] = {pulse_rail_, candidate_frames_[i], pulse_opposite_,
                            pulse_repeats_, pulse_neutral_};
@@ -182,15 +189,49 @@ bool XteinkDisplay::run_calibration(bool rebuild, bool rotate,
   lab_->bwPreparation = bw_preparation_;
   lab_->verticalWindowValidated = vertical_window_;
   lab_->croppedUploadValidated = cropped_upload_;
-  return lab_->start(millis(), rebuild, rotate, conditioning);
+}
+bool XteinkDisplay::show_calibration_image(uint8_t image, uint32_t seed) {
+  if (!calibration_active_ || lab_->busy() || exit_requested_ ||
+      image < 1 || image > 4) return false;
+  configure_lab_();
+  if (!lab_->startImage(millis(), ::x4render::TestImage(image), seed)) return false;
+  last_test_image_ = image;
+  last_image_seed_ = seed;
+  return true;
+}
+bool XteinkDisplay::repeat_calibration_image() {
+  return show_calibration_image(last_test_image_, last_image_seed_);
+}
+std::string XteinkDisplay::calibration_image() const {
+  if (!lab_) return "none";
+  const char* names[] = {"calibration", "white", "black", "known reference", "random edges"};
+  char value[80];
+  std::snprintf(value, sizeof(value), "%s; seed %08lX", names[uint8_t(lab_->image())],
+                (unsigned long)lab_->imageSeed());
+  return value;
 }
 void XteinkDisplay::end_calibration() {
   if (!calibration_active_) return;
-  if (lab_->busy()) {
+  if (!exit_requested_) {
     exit_requested_ = true;
+    exit_shutdown_attempted_ = exit_failed_ = false;
+  }
+  if (lab_->busy()) return;
+  using S = freeink::Uc8279X4Transport::Status;
+  if (transport_->status() != S::Off && transport_->status() != S::Sleeping) {
+    if (!exit_shutdown_attempted_) {
+      exit_shutdown_attempted_ = true;
+      if (lab_->powerOff(millis())) return;
+    }
+    // Keep the display lease and paused UI on an unconfirmed shutdown.
+    // Returning it would reset a controller whose power state is unknown.
+    exit_failed_ = true;
+    exit_requested_ = false;
+    ESP_LOGE(TAG, "Lab release failed: controller power-off unconfirmed");
     return;
   }
   parent_->display().endControllerSession();
+  lab_->invalidate();
   calibration_active_ = false;
   exit_requested_ = false;
   frames_.resetController();
@@ -212,12 +253,25 @@ void XteinkDisplay::loop() {
     if (detailed_) {
       ESP_LOGI(TAG, "%s", calibration_region().c_str());
       log_calibration_waveforms();
+      log_calibration_timing();
     }
     if (exit_requested_) end_calibration();
   }
 }
+void XteinkDisplay::log_calibration_timing() const {
+  if (!transport_ || lab_->busy()) return;
+  const char* names[] = {"reset", "write", "upload", "issue", "busy-on", "busy-off",
+                         "assert-timeout", "complete-timeout"};
+  for (size_t i = 0; i < transport_->traceSize(); ++i) {
+    const auto& e = transport_->traceEvent(i);
+    ESP_LOGI(TAG, "LABTIME t=%lu %s cmd=%02X detail=%lu poll-gap=%lu",
+             (unsigned long)e.at, names[uint8_t(e.event)], e.command,
+             (unsigned long)e.detail, (unsigned long)e.pollGap);
+  }
+}
 const char* XteinkDisplay::calibration_pipeline() const {
   if (!calibration_active_ || !lab_) return "boiler_bw_preview";
+  if (exit_failed_) return "release_failed_power_off_unconfirmed";
   using J = ::x4render::Calibration<freeink::Uc8279X4Transport>::Job;
   switch (lab_->job()) {
     case J::PowerOn:
@@ -225,6 +279,8 @@ const char* XteinkDisplay::calibration_pipeline() const {
     case J::Base:
       return lab_->factoryPreparation() ? "otp_full_bw_starts"
                                         : "programmable_bw_starts";
+    case J::Pause:
+      return "bw_to_gray_host_pause";
     case J::Settle:
       return "raw_candidate_settle";
     case J::Conditioning:
@@ -254,7 +310,7 @@ std::string XteinkDisplay::calibration_assignments() const {
   const uint8_t r = lab_->programmedRotation();
   std::snprintf(
       text, sizeof(text),
-      "v3 inverse-BW; opposite-first; id %u; left=%c middle=%c right=%c",
+      "v4 conditioned-BW; opposite-first; id %u; left=%c middle=%c right=%c",
       unsigned(lab_->waveformId()), 'A' + r, 'A' + (r + 1) % 3,
       'A' + (r + 2) % 3);
   return text;
