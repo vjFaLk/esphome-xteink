@@ -196,7 +196,7 @@ number:
     max_value: 63
     step: 1
     initial_value: 2
-    set_action:
+    on_value:
       - lambda: id(x4_display).set_candidate_frames(0, x);
   - platform: template
     name: "Waveform Candidate B Frames"
@@ -207,7 +207,7 @@ number:
     max_value: 63
     step: 1
     initial_value: 4
-    set_action:
+    on_value:
       - lambda: id(x4_display).set_candidate_frames(1, x);
   - platform: template
     name: "Waveform Candidate C Frames"
@@ -218,7 +218,7 @@ number:
     max_value: 63
     step: 1
     initial_value: 6
-    set_action:
+    on_value:
       - lambda: id(x4_display).set_candidate_frames(2, x);
   - platform: template
     name: "Waveform Pulse Rail Code"
@@ -229,7 +229,7 @@ number:
     max_value: 2
     step: 1
     initial_value: 1
-    set_action:
+    on_value:
       - lambda: id(x4_display).set_pulse_rail(x);
   - platform: template
     name: "Waveform Opposite Frames"
@@ -240,7 +240,7 @@ number:
     max_value: 63
     step: 1
     initial_value: 0
-    set_action:
+    on_value:
       - lambda: id(x4_display).set_pulse_opposite(x);
   - platform: template
     name: "Waveform Pulse Repeats"
@@ -251,7 +251,7 @@ number:
     max_value: 16
     step: 1
     initial_value: 1
-    set_action:
+    on_value:
       - lambda: id(x4_display).set_pulse_repeats(x);
   - platform: template
     name: "Waveform Neutral Frames"
@@ -262,7 +262,7 @@ number:
     max_value: 63
     step: 1
     initial_value: 1
-    set_action:
+    on_value:
       - lambda: id(x4_display).set_pulse_neutral(x);
   - platform: template
     name: "Waveform Hold Rail Code"
@@ -273,7 +273,7 @@ number:
     max_value: 3
     step: 1
     initial_value: 3
-    set_action:
+    on_value:
       - lambda: id(x4_display).set_hold_rail(x);
   - platform: template
     name: "Measured A Black Start"

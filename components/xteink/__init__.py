@@ -50,7 +50,7 @@ def _ensure_dependencies():
         if revision() != lock[name]:
             # ESPHome external_components does NOT initialize submodules in the
             # inspected 2026.10 implementation. Follow gitlinks explicitly.
-            subprocess.run(["git", "-C", str(REPO_DIR), "submodule", "update", "--init", "--recursive",
+            subprocess.run(["git", "-C", str(REPO_DIR), "submodule", "update", "--init", "--recursive", "--depth=1",
                             "--", str(directory.relative_to(REPO_DIR))], check=True, timeout=300)
         if revision() != lock[name]:
             raise cv.Invalid(f"Pinned {name} dependency missing or mismatched; initialize recursive submodules")
@@ -140,10 +140,12 @@ _VENDOR_LAYOUT = "merged-v1"
 def _sdk_fingerprint() -> str:
     h = hashlib.sha1(_VENDOR_LAYOUT.encode())
     h.update((COMPONENT_DIR / "shim" / "Logging" / "include" / "Logging.h").read_bytes())
-    for f in sorted(SDK_DIR.rglob("*")):
-        if f.is_file():
-            h.update(str(f.relative_to(SDK_DIR)).encode())
-            h.update(f.read_bytes())
+    h.update((COMPONENT_DIR / "dependencies.json").read_bytes())
+    for library in SDK_LIBS:
+        for f in sorted((SDK_DIR / library).rglob("*")):
+            if f.is_file():
+                h.update(str(f.relative_to(SDK_DIR)).encode())
+                h.update(f.read_bytes())
     return h.hexdigest()
 
 
