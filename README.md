@@ -235,3 +235,25 @@ Host validation:
 python3 components/xteink/dependencies/rendering/test/run.py
 python3 components/xteink/dependencies/freeink/libs/display/FreeInkDisplay/test/host/run_x4_transport.py
 ```
+
+### Updated waveform inspection and B/W timing
+
+The second calibration firmware uses **opposite prefix → A/B/C candidate → hold**.
+The observed panel behavior is code 1 darkens, 2 brightens, 0 holds references in
+current tests; no stable palette or noise cure is established. Rebuild resets
+rotation; Repeat preserves it; Assignments reports the actual last mapping.
+
+HA exposes A/B/C/VCOM/Hold **Binary** traces and **LUT Hex** records, plus equivalent
+B/W black/white/VCOM diagnostics. These describe the saved, actually programmed
+register payloads. The compact trace contains two-bit codes, duration counts,
+and group/state repeats; the hex record is the exact 49 bytes. **Waveform Export
+Binary LUTs** prints all seven raw binary groups to logs without refreshing.
+Factory OTP preparation correctly reports its unrecovered payload unavailable.
+
+For the B/W noise experiment, select **Waveform B-W Preparation → Programmable
+B-W Drive**, change **Waveform B-W Frames** (1–63) and **Waveform B-W Repeats**
+(1–16), then press Rebuild. The same endpoint duration applies to black and white;
+code 1 drives black and code 2 drives white, followed by one hold count. Factory
+OTP remains the baseline comparison. Frames/Repetitions affect preparation only,
+not A/B/C settle durations. Inspect the upper 75 solid rows of each test patch;
+the bottom 15 contain intentional ordered ramps.
