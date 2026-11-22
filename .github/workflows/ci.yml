@@ -13,6 +13,8 @@ jobs:
         example: [x4, x3, x4_pro, x4_pro_lvgl]
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -21,14 +23,16 @@ jobs:
           path: |
             ~/.platformio
             examples/.esphome
-          key: pio-${{ matrix.example }}-${{ hashFiles('components/xteink/sdk/SDK_COMMIT') }}
+          key: pio-${{ matrix.example }}-${{ hashFiles('components/xteink/dependencies.json') }}
       - run: pip install esphome
       - run: esphome compile examples/${{ matrix.example }}.yaml
 
-  sdk-in-sync:
-    # components/xteink/sdk/libs must be a byte-identical copy of freeink-sdk at SDK_COMMIT.
+  host:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: scripts/sync-sdk.sh "$(cat components/xteink/sdk/SDK_COMMIT)"
-      - run: git diff --exit-code --stat
+        with:
+          submodules: recursive
+      - run: python3 components/xteink/dependencies/freeink/libs/display/FreeInkDisplay/test/host/run_x4_transport.py
+      - run: python3 components/xteink/dependencies/rendering/test/run.py
+      - run: git diff --exit-code && git submodule status --recursive

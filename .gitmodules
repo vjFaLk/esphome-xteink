@@ -1,0 +1,6 @@
+[submodule "components/xteink/dependencies/freeink"]
+	path = components/xteink/dependencies/freeink
+	url = https://github.com/morpheby/freeink-sdk.git
+[submodule "components/xteink/dependencies/rendering"]
+	path = components/xteink/dependencies/rendering
+	url = https://github.com/morpheby/xteink-rendering.git

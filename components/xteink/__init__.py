@@ -8,6 +8,7 @@ PlatformIO lib_dep, so the SDK's own library.json files drive the build.
 import hashlib
 import json
 import shutil
+import subprocess
 from pathlib import Path
 
 import esphome.codegen as cg
@@ -36,7 +37,25 @@ MODELS = {
     "x4_pro": ("esp32s3", "FREEINK_DEVICE_X4PRO"),
 }
 
-SDK_DIR = Path(__file__).parent / "sdk"
+COMPONENT_DIR = Path(__file__).parent
+REPO_DIR = COMPONENT_DIR.parents[1]
+SDK_DIR = COMPONENT_DIR / "dependencies" / "freeink"
+RENDER_DIR = COMPONENT_DIR / "dependencies" / "rendering"
+
+def _ensure_dependencies():
+    lock = json.loads((COMPONENT_DIR / "dependencies.json").read_text())
+    for name, directory in (("freeink", SDK_DIR), ("rendering", RENDER_DIR)):
+        def revision():
+            result = subprocess.run(["git", "-C", str(directory), "rev-parse", "HEAD"], capture_output=True, text=True)
+            return result.stdout.strip() if result.returncode == 0 else None
+        if revision() != lock[name]:
+            # ESPHome external_components does NOT initialize submodules in the
+            # inspected 2026.10 implementation. Follow gitlinks explicitly.
+            subprocess.run(["git", "-C", str(REPO_DIR), "submodule", "update", "--init", "--recursive",
+                            "--", str(directory.relative_to(REPO_DIR))], check=True, timeout=300)
+        if revision() != lock[name]:
+            raise cv.Invalid(f"Pinned {name} dependency missing or mismatched; initialize recursive submodules")
+
 # SDK libraries (paths inside sdk/) that get merged into one PlatformIO library.
 SDK_LIBS = [
     "libs/hardware/BoardConfig",
@@ -45,7 +64,7 @@ SDK_LIBS = [
     "libs/hardware/BatteryMonitor",
     "libs/hardware/XteinkDetect",
     "libs/hardware/FrontlightManager",
-    "shim/Logging",
+
 ]
 
 CONFIG_SCHEMA = cv.Schema(
@@ -85,9 +104,9 @@ def _final_validate(config):
         raise cv.Invalid(
             f"xteink model '{config[CONF_MODEL]}' is an {want} device but esp32 variant is {have}"
         )
-    if config[CONF_RETAIN_DISPLAY_CONTROLLER] and config[CONF_MODEL] != "x4_pro":
+    if config[CONF_RETAIN_DISPLAY_CONTROLLER]:
         raise cv.Invalid(
-            "retain_display_controller is currently supported only on x4_pro"
+            "Controller retention is gated until stage 5 physical validation; use false"
         )
     return config
 
@@ -121,6 +140,7 @@ _VENDOR_LAYOUT = "merged-v1"
 
 def _sdk_fingerprint() -> str:
     h = hashlib.sha1(_VENDOR_LAYOUT.encode())
+    h.update((COMPONENT_DIR / "shim" / "Logging" / "include" / "Logging.h").read_bytes())
     for f in sorted(SDK_DIR.rglob("*")):
         if f.is_file():
             h.update(str(f.relative_to(SDK_DIR)).encode())
@@ -137,6 +157,7 @@ def _vendor_sdk() -> Path:
     include/ and src/ trees into a single library sidesteps that entirely
     (file names are unique across the libs). Redone only when sdk/ changes.
     """
+    _ensure_dependencies()
     dst = CORE.relative_build_path("lib", "xteink-sdk")
     fingerprint = _sdk_fingerprint()
     stamp = dst / ".fingerprint"
@@ -152,11 +173,12 @@ def _vendor_sdk() -> Path:
         for sub in ("include", "src"):
             if (SDK_DIR / lib / sub).is_dir():
                 shutil.copytree(SDK_DIR / lib / sub, dst / sub, dirs_exist_ok=True)
+    shutil.copytree(COMPONENT_DIR / "shim" / "Logging" / "include", dst / "include", dirs_exist_ok=True)
     (dst / "library.json").write_text(
         json.dumps(
             {
                 "name": "xteink-sdk",
-                "version": "0.0.0+" + (SDK_DIR / "SDK_COMMIT").read_text().strip()[:12],
+                "version": "0.0.0+" + json.loads((COMPONENT_DIR / "dependencies.json").read_text())["freeink"][:12],
                 "description": "FreeInk SDK subset merged by esphome-xteink",
                 "platforms": "espressif32",
                 "frameworks": ["arduino"],
@@ -186,6 +208,7 @@ async def to_code(config):
     # file:///abs/path is understood by PlatformIO (ESPHome <= 2026.7, copied into
     # .piolibdeps) and by ESPHome >= 2026.8's own library-to-IDF-component converter.
     cg.add_library("xteink-sdk", None, _vendor_sdk().resolve().as_uri())
+    cg.add_library("xteink-rendering", None, RENDER_DIR.resolve().as_uri())
     # esp32 builds with lib_ldf_mode=off, so the SDK's Arduino deps must be listed too.
     cg.add_library("SPI", None)
     cg.add_library("Wire", None)

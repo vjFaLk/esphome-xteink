@@ -13,42 +13,6 @@ namespace xteink {
 
 static const char *const TAG = "xteink";
 
-struct RetainedControllerTag {
-  uint32_t magic;
-  uint8_t controller;
-  uint8_t variant;
-  uint16_t reserved;
-  uint32_t check;
-};
-
-static constexpr uint32_t RETAINED_CONTROLLER_MAGIC = 0x58544352;  // "XTCR"
-static RTC_NOINIT_ATTR RetainedControllerTag retained_controller_tag;
-
-static bool retained_controller_tag_valid() {
-  const uint32_t value = static_cast<uint32_t>(retained_controller_tag.controller) |
-                         (static_cast<uint32_t>(retained_controller_tag.variant) << 8);
-  return retained_controller_tag.magic == RETAINED_CONTROLLER_MAGIC &&
-         retained_controller_tag.check == (RETAINED_CONTROLLER_MAGIC ^ value);
-}
-
-static void clear_retained_controller_tag() {
-  retained_controller_tag.magic = 0;
-  retained_controller_tag.controller = 0;
-  retained_controller_tag.variant = 0;
-  retained_controller_tag.reserved = 0;
-  retained_controller_tag.check = 0;
-}
-
-static void save_retained_controller_tag() {
-  retained_controller_tag.controller = static_cast<uint8_t>(BoardConfig::ACTIVE.displayController);
-  retained_controller_tag.variant = BoardConfig::ACTIVE.displayControllerVariant;
-  retained_controller_tag.reserved = 0;
-  const uint32_t value = static_cast<uint32_t>(retained_controller_tag.controller) |
-                         (static_cast<uint32_t>(retained_controller_tag.variant) << 8);
-  retained_controller_tag.check = RETAINED_CONTROLLER_MAGIC ^ value;
-  retained_controller_tag.magic = RETAINED_CONTROLLER_MAGIC;
-}
-
 void Xteink::setup() {
   // Battery-latched boards (X4 Pro's GPIO1 peripheral rail) power off without this.
   BoardConfig::holdPowerRails();
@@ -56,23 +20,9 @@ void Xteink::setup() {
   // holds it LOW and the hold survives the wake reset; an unpowered card clamps the bus
   // and the controller probe below goes deaf. No-op on boards without a switched SD rail.
   BoardConfig::releaseSdRail();
-  const auto wake_cause = esp_sleep_get_wakeup_cause();
-  const bool deep_sleep_wake = wake_cause != ESP_SLEEP_WAKEUP_UNDEFINED;
-  const bool restore_controller = this->retain_display_controller_ && deep_sleep_wake &&
-                                  retained_controller_tag_valid() &&
-                                  retained_controller_tag.controller ==
-                                      static_cast<uint8_t>(BoardConfig::DisplayController::UC8279);
-  if (restore_controller) {
-    BoardConfig::ACTIVE.displayController = BoardConfig::DisplayController::UC8279;
-    BoardConfig::ACTIVE.displayControllerVariant = retained_controller_tag.variant;
-    ESP_LOGI(TAG, "Restoring retained UC8279 controller state (variant 0x%02X)",
-             retained_controller_tag.variant);
-  } else {
-    clear_retained_controller_tag();
-  }
   // Newer panel batches ship an UltraChip controller in place of the SSD1677/UC8253;
   // probe the bus and promote the profile before the driver is selected in begin().
-  if (!restore_controller && freeink::applyXteinkDisplayController()) {
+  if (freeink::applyXteinkDisplayController()) {
     ESP_LOGI(TAG, "UltraChip panel controller detected, driver promoted");
   }
 #if FREEINK_DEVICE_X3
@@ -81,8 +31,8 @@ void Xteink::setup() {
   }
   this->display_.setDisplayX3();
 #endif
-  this->display_.begin(restore_controller);
-  this->controller_state_retained_ = restore_controller && this->display_.supportsRetainedController();
+  this->display_.begin();
+  this->controller_state_retained_ = false;
   this->input_.begin();
 }
 
@@ -122,14 +72,10 @@ void Xteink::on_powerdown() {
     delay(1);
     return true;
   });
-  const bool retain_controller = this->retain_display_controller_ && BoardConfig::isX4Pro() &&
-                                 this->display_.sleepRetainingController();
-  if (retain_controller)
-    save_retained_controller_tag();
-  else {
-    clear_retained_controller_tag();
-    this->display_.deepSleep();
-  }
+  // Calibration's deep_sleep.prevent gate owns normal sleep scheduling. A
+  // forced shutdown must still never route through the stale ordinary driver.
+  if (this->display_.controllerSessionActive()) return;
+  this->display_.deepSleep();
 
   const auto &b = BoardConfig::ACTIVE;
   // Panel RESET must not float through sleep: a transient reset would discard a

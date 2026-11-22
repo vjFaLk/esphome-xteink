@@ -1,0 +1,331 @@
+# Calibration package for the boiler configuration (x4_display, ds, ota_hold).
+# Raw rail semantics are experimental. No automatic repeat or boot-time drive.
+globals:
+  - id: lab_rotation
+    type: int
+    initial_value: '0'
+
+switch:
+  - platform: template
+    id: waveform_lab
+    name: "Waveform Calibration"
+    entity_category: diagnostic
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - script.execute: waveform_take_control
+    turn_off_action:
+      - script.execute: waveform_release_control
+  - platform: template
+    name: "Waveform Vertical Window Experiment"
+    entity_category: diagnostic
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: id(x4_display).set_vertical_window(true);
+    turn_off_action:
+      - lambda: id(x4_display).set_vertical_window(false);
+  - platform: template
+    name: "Waveform Cropped Upload Experiment"
+    entity_category: diagnostic
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: id(x4_display).set_cropped_upload(true);
+    turn_off_action:
+      - lambda: id(x4_display).set_cropped_upload(false);
+  - platform: template
+    name: "Waveform Detailed Logging"
+    entity_category: diagnostic
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: id(x4_display).set_detailed_logging(true);
+    turn_off_action:
+      - lambda: id(x4_display).set_detailed_logging(false);
+
+button:
+  - platform: template
+    name: "Waveform Rebuild B-W Starts"
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: id(x4_display).run_calibration(true);
+  - platform: template
+    name: "Waveform Repeat With Held References"
+    entity_category: diagnostic
+    on_press:
+      - lambda: id(x4_display).run_calibration(false, id(lab_rotation));
+  - platform: template
+    name: "Waveform Rotate Candidates"
+    entity_category: diagnostic
+    on_press:
+      - lambda: |-
+          if (!id(x4_display).calibration_busy()) {
+            id(lab_rotation) = (id(lab_rotation) + 1) % 3;
+            id(x4_display).run_calibration(false, id(lab_rotation));
+          }
+  - platform: template
+    name: "Waveform Full Panel Pulse"
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: id(x4_display).run_calibration(false, 0, true);
+
+  - platform: template
+    name: "Waveform Power Off Pumps"
+    entity_category: diagnostic
+    on_press:
+      - lambda: id(x4_display).calibration_power_off();
+
+script:
+  - id: waveform_take_control
+    mode: single
+    then:
+      - deep_sleep.prevent: ds
+      - lambda: |-
+          id(user_requested_display) = true;
+          id(timer_wake) = false;
+      - script.stop: condition_display
+      - script.stop: sleep_after_timer_refresh
+      - script.stop: timer_wake_fail_safe
+      - script.stop: interactive_sleep
+      - script.stop: prepare_display_for_sleep
+      - script.stop: connection_timeout
+      - script.stop: queue_overview_refresh
+      - script.stop: queue_heating_refresh
+      - switch.turn_on: ota_hold
+      - lvgl.pause:
+      - lambda: |-
+          if (!id(x4_display).begin_calibration()) {
+            ESP_LOGE("waveform_lab", "Could not acquire display");
+          }
+  - id: waveform_release_control
+    mode: single
+    then:
+      - wait_until:
+          condition:
+            lambda: return !id(x4_display).calibration_busy();
+      - lambda: id(x4_display).calibration_power_off();
+      - wait_until:
+          condition:
+            lambda: return !id(x4_display).calibration_busy();
+      - lambda: |-
+          id(x4_display).end_calibration();
+          id(x4_display).begin_virtual_update();
+      - lvgl.resume:
+      - lvgl.widget.redraw:
+      - delay: 250ms
+      - lambda: id(x4_display).end_virtual_update(true);
+      - deep_sleep.allow: ds
+      - switch.turn_off: ota_hold
+      - script.execute: interactive_sleep
+
+select:
+  - platform: template
+    name: "Rendering Mode Request"
+    entity_category: diagnostic
+    optimistic: true
+    initial_option: "B-W Dither"
+    options:
+      - "B-W Dither"
+      - "Single Settle - Awaiting Calibration"
+      - "Dither Then Settle - Awaiting Calibration"
+    set_action:
+      - lambda: |-
+          const int mode = x == "B-W Dither" ? 0 : x == "Single Settle - Awaiting Calibration" ? 1 : 2;
+          id(x4_display).set_rendering_mode(mode);
+
+sensor:
+  - platform: template
+    name: "Waveform Duration"
+    entity_category: diagnostic
+    unit_of_measurement: ms
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: return id(x4_display).calibration_duration();
+  - platform: template
+    name: "Waveform Uploaded Bytes"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: return id(x4_display).calibration_bytes();
+  - platform: template
+    name: "Waveform Driven Pixels"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: return id(x4_display).calibration_driven();
+  - platform: template
+    name: "Waveform Completed Cycles"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: return id(x4_display).calibration_cycles();
+text_sensor:
+  - platform: template
+    name: "Waveform Result"
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: return {id(x4_display).calibration_result()};
+  - platform: template
+    name: "Waveform Regions"
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: return {id(x4_display).calibration_region()};
+  - platform: template
+    name: "Waveform Measured Shade Order"
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: return {id(x4_display).calibration_order()};
+  - platform: template
+    name: "Waveform Active Pipeline"
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: return {id(x4_display).calibration_pipeline()};
+
+number:
+  - platform: template
+    name: "Waveform Candidate A Frames"
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: true
+    min_value: 1
+    max_value: 63
+    step: 1
+    initial_value: 2
+    set_action:
+      - lambda: id(x4_display).set_candidate_frames(0, x);
+  - platform: template
+    name: "Waveform Candidate B Frames"
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: true
+    min_value: 1
+    max_value: 63
+    step: 1
+    initial_value: 4
+    set_action:
+      - lambda: id(x4_display).set_candidate_frames(1, x);
+  - platform: template
+    name: "Waveform Candidate C Frames"
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: true
+    min_value: 1
+    max_value: 63
+    step: 1
+    initial_value: 6
+    set_action:
+      - lambda: id(x4_display).set_candidate_frames(2, x);
+  - platform: template
+    name: "Waveform Pulse Rail Code"
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: true
+    min_value: 1
+    max_value: 2
+    step: 1
+    initial_value: 1
+    set_action:
+      - lambda: id(x4_display).set_pulse_rail(x);
+  - platform: template
+    name: "Waveform Opposite Frames"
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: true
+    min_value: 0
+    max_value: 63
+    step: 1
+    initial_value: 0
+    set_action:
+      - lambda: id(x4_display).set_pulse_opposite(x);
+  - platform: template
+    name: "Waveform Pulse Repeats"
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: true
+    min_value: 1
+    max_value: 16
+    step: 1
+    initial_value: 1
+    set_action:
+      - lambda: id(x4_display).set_pulse_repeats(x);
+  - platform: template
+    name: "Waveform Neutral Frames"
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: true
+    min_value: 0
+    max_value: 63
+    step: 1
+    initial_value: 1
+    set_action:
+      - lambda: id(x4_display).set_pulse_neutral(x);
+  - platform: template
+    name: "Waveform Hold Rail Code"
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: true
+    min_value: 0
+    max_value: 3
+    step: 1
+    initial_value: 3
+    set_action:
+      - lambda: id(x4_display).set_hold_rail(x);
+  - platform: template
+    name: "Measured A Black Start"
+    entity_category: diagnostic
+    optimistic: true
+    min_value: 1
+    max_value: 254
+    step: 1
+    set_action:
+      - lambda: id(x4_display).set_measured_shade(0, x);
+  - platform: template
+    name: "Measured B Black Start"
+    entity_category: diagnostic
+    optimistic: true
+    min_value: 1
+    max_value: 254
+    step: 1
+    set_action:
+      - lambda: id(x4_display).set_measured_shade(1, x);
+  - platform: template
+    name: "Measured C Black Start"
+    entity_category: diagnostic
+    optimistic: true
+    min_value: 1
+    max_value: 254
+    step: 1
+    set_action:
+      - lambda: id(x4_display).set_measured_shade(2, x);
+  - platform: template
+    name: "Measured A White Start"
+    entity_category: diagnostic
+    optimistic: true
+    min_value: 1
+    max_value: 254
+    step: 1
+    set_action:
+      - lambda: id(x4_display).set_measured_shade(3, x);
+  - platform: template
+    name: "Measured B White Start"
+    entity_category: diagnostic
+    optimistic: true
+    min_value: 1
+    max_value: 254
+    step: 1
+    set_action:
+      - lambda: id(x4_display).set_measured_shade(4, x);
+  - platform: template
+    name: "Measured C White Start"
+    entity_category: diagnostic
+    optimistic: true
+    min_value: 1
+    max_value: 254
+    step: 1
+    set_action:
+      - lambda: id(x4_display).set_measured_shade(5, x);
