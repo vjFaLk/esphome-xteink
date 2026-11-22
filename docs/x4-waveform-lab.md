@@ -7,8 +7,10 @@ preserved. The single-settle modes remain gated pending measured calibration.
 
 ## Deterministic ownership
 
-Acquisition drains the normal driver's refresh, asks that driver to power down
-and deep-sleep, and checks BUSY before lending the bus. Calibration then resets
+Acquisition drains the normal driver's refresh and asks that driver to power down
+active pumps, checking BUSY before lending the bus. An already-off or sleeping
+controller can be reset without interpreting its deep-sleep BUSY level.
+Calibration then resets
 the controller, sets geometry, invalidates all reference/snapshot assumptions,
 and reconstructs both planes for its first image. Exiting waits for the active
 job and confirmed power-off before resetting the ordinary driver. A shutdown
