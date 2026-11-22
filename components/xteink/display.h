@@ -47,7 +47,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   bool condition_panel_step(uint8_t) { return run_calibration(false, 0, true); }
   void end_panel_conditioning() { end_calibration(); }
   bool begin_calibration();
-  bool run_calibration(bool rebuild = true, uint8_t rotation = 0,
+  bool run_calibration(bool rebuild = true, bool rotate = false,
                        bool conditioning = false);
   void end_calibration();
   bool calibration_power_off() {
@@ -63,6 +63,15 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_pulse_repeats(uint8_t value) { pulse_repeats_ = value; }
   void set_pulse_neutral(uint8_t value) { pulse_neutral_ = value; }
   void set_hold_rail(uint8_t value) { hold_rail_ = value; }
+  void set_bw_preparation(bool programmable) {
+    bw_preparation_.programmable = programmable;
+  }
+  void set_bw_frames(uint8_t value) { bw_preparation_.frames = value; }
+  void set_bw_repeats(uint8_t value) { bw_preparation_.repeats = value; }
+  std::string calibration_waveform(uint8_t row, bool hex = false,
+                                   bool preparation = false) const;
+  std::string calibration_assignments() const;
+  void log_calibration_waveforms() const;
   void set_vertical_window(bool v) { vertical_window_ = v; }
   void set_cropped_upload(bool v) { cropped_upload_ = v; }
   void set_detailed_logging(bool v) { detailed_ = v; }
@@ -119,10 +128,11 @@ class XteinkDisplay : public display::DisplayBuffer {
   bool vertical_window_{false}, cropped_upload_{false}, detailed_{false};
   int refresh_mode_{HALF_REFRESH}, requested_mode_{0};
   uint32_t full_every_{0}, partials_{0};
+  ::x4render::BwPreparation bw_preparation_{};
   std::array<uint8_t, 6> measured_{};
   uint8_t measured_mask_{0};
-  uint8_t candidate_frames_[3]{2, 4, 6}, pulse_rail_{1}, pulse_opposite_{0},
-      pulse_repeats_{1}, pulse_neutral_{1}, hold_rail_{3};
+  uint8_t candidate_frames_[3]{2, 4, 6}, pulse_rail_{2}, pulse_opposite_{0},
+      pulse_repeats_{1}, pulse_neutral_{1}, hold_rail_{0};
 };
 }  // namespace xteink
 }  // namespace esphome

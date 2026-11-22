@@ -160,7 +160,7 @@ bool XteinkDisplay::begin_calibration() {
            "No automatic cycles.");
   return true;
 }
-bool XteinkDisplay::run_calibration(bool rebuild, uint8_t rotation,
+bool XteinkDisplay::run_calibration(bool rebuild, bool rotate,
                                     bool conditioning) {
   if (!calibration_active_ || lab_->busy() || exit_requested_) return false;
   for (uint8_t i = 0; i < 3; ++i) {
@@ -179,9 +179,10 @@ bool XteinkDisplay::run_calibration(bool rebuild, uint8_t rotation,
     lab_->parameters[i] = {pulse_rail_, candidate_frames_[i], pulse_opposite_,
                            pulse_repeats_, pulse_neutral_};
   lab_->holdRail = hold_rail_;
+  lab_->bwPreparation = bw_preparation_;
   lab_->verticalWindowValidated = vertical_window_;
   lab_->croppedUploadValidated = cropped_upload_;
-  return lab_->start(millis(), rebuild, rotation, conditioning);
+  return lab_->start(millis(), rebuild, rotate, conditioning);
 }
 void XteinkDisplay::end_calibration() {
   if (!calibration_active_) return;
@@ -208,7 +209,10 @@ void XteinkDisplay::loop() {
              lab_->result(), unsigned(lab_->duration),
              unsigned(lab_->uploadedBytes()), unsigned(lab_->driveCount),
              unsigned(lab_->cycles));
-    if (detailed_) ESP_LOGI(TAG, "%s", calibration_region().c_str());
+    if (detailed_) {
+      ESP_LOGI(TAG, "%s", calibration_region().c_str());
+      log_calibration_waveforms();
+    }
     if (exit_requested_) end_calibration();
   }
 }
@@ -219,7 +223,8 @@ const char* XteinkDisplay::calibration_pipeline() const {
     case J::PowerOn:
       return "calibration_power_on";
     case J::Base:
-      return "otp_full_bw_starts";
+      return lab_->factoryPreparation() ? "otp_full_bw_starts"
+                                        : "programmable_bw_starts";
     case J::Settle:
       return "raw_candidate_settle";
     case J::Conditioning:
@@ -232,14 +237,57 @@ const char* XteinkDisplay::calibration_pipeline() const {
       return "calibration_idle_hold";
   }
 }
+std::string XteinkDisplay::calibration_waveform(uint8_t row, bool hex,
+                                                bool preparation) const {
+  if (!lab_) return "not programmed";
+  const auto* lut =
+      preparation ? lab_->preparationLut(row) : lab_->settleLut(row);
+  if (!lut)
+    return preparation && lab_->factoryPreparation()
+               ? "Factory OTP: payload unavailable"
+               : "not programmed";
+  return hex ? ::x4render::lutHex(*lut) : ::x4render::lutTrace(*lut);
+}
+std::string XteinkDisplay::calibration_assignments() const {
+  if (!lab_ || !lab_->settleLut(0)) return "not programmed";
+  char text[100];
+  const uint8_t r = lab_->programmedRotation();
+  std::snprintf(text, sizeof(text),
+                "v2 opposite-first; id %u; left=%c middle=%c right=%c",
+                unsigned(lab_->waveformId()), 'A' + r, 'A' + (r + 1) % 3,
+                'A' + (r + 2) % 3);
+  return text;
+}
+void XteinkDisplay::log_calibration_waveforms() const {
+  if (!lab_) return;
+  ESP_LOGI(TAG, "%s", calibration_assignments().c_str());
+  const uint8_t rows[5] = {0, ::x4render::Row[1], ::x4render::Row[2],
+                           ::x4render::Row[3], ::x4render::Row[0]};
+  const char* names[5] = {"VCOM", "A", "B", "C", "HOLD"};
+  const char* prepNames[5] = {"VCOM", "UNUSED01", "BLACK", "WHITE", "HOLD00"};
+  for (bool preparation : {false, true})
+    for (uint8_t i = 0; i < 5; ++i) {
+      const auto* lut = preparation ? lab_->preparationLut(rows[i])
+                                    : lab_->settleLut(rows[i]);
+      if (!lut) continue;
+      ESP_LOGI(TAG, "%s %s R%02X hex=%s", preparation ? "PREP" : "SETTLE",
+               preparation ? prepNames[i] : names[i], 0x20 + rows[i],
+               ::x4render::lutHex(*lut).c_str());
+      const auto binary = ::x4render::lutBinary(*lut);
+      for (uint8_t group = 0; group < 7; ++group)
+        ESP_LOGI(TAG, "%s %s g%u bits=%s", preparation ? "PREP" : "SETTLE",
+                 preparation ? prepNames[i] : names[i], group,
+                 binary.substr(group * 63, 62).c_str());
+    }
+}
 std::string XteinkDisplay::calibration_region() const {
   if (!lab_) return "idle";
   char text[160];
-  auto r = lab_->requested, e = lab_->expanded;
+  auto r = lab_->requested, e = lab_->activationWindow();
   std::snprintf(text, sizeof(text),
                 "requested %u,%u %ux%u; activation %u,%u %ux%u; hold code %u",
-                r.x, r.y, r.width, r.height, 0, vertical_window_ ? e.y : 0, 800,
-                vertical_window_ ? e.height : 480, hold_rail_);
+                r.x, r.y, r.width, r.height, e.x, e.y, e.width, e.height,
+                lab_->programmedHoldRail());
   return text;
 }
 std::string XteinkDisplay::calibration_order() const {
