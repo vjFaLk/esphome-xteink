@@ -59,10 +59,13 @@ Rest source 0 plus VCOM 0 is not certified zero field or active discharge.
 ## Controls and expected effects
 
 Changes apply on the next explicit image/rebuild operation, never automatically.
-The nine new controls are RAM-only to avoid adding preference writes to a device
-already reporting NVS exhaustion. Their defaults return after reboot. Existing
-controls retain their prior persistence behavior. Export/save settings before
-reboot; actual persistence of existing settings remains subject to the NVS issue.
+All waveform tuning controls and the preparation selection are RAM-only while
+the device reports NVS exhaustion. The old saved values restored hold=3 and
+A/B/C=2/4/6 after reboot, invalidating comparisons. Boot defaults now use the
+user's recorded A/B/C=2/3/4, opposite=3, rail=2, repeat=1, neutral=1, hold=0;
+B/W inversion/target=20/20, repeat=1. Conditioned preparation is selected, with
+factory priming OFF. Export/save experimental changes before reboot; they are
+kept across exit/re-entry without reboot. No device NVS erase is performed.
 
 | Control (Waveform B-W prefix) | Default/range | Applies to | Expected effect |
 |---|---|---|---|

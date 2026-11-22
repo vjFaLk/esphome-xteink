@@ -215,8 +215,8 @@ select:
     name: "Waveform B-W Preparation"
     entity_category: diagnostic
     optimistic: true
-    restore_value: true
-    initial_option: "Factory OTP"
+    restore_value: false
+    initial_option: "Conditioned B-W Drive"
     options:
       - "Factory OTP"
       - "Programmable B-W Drive"
@@ -369,7 +369,7 @@ number:
     name: "Waveform Candidate A Frames"
     entity_category: diagnostic
     optimistic: true
-    restore_value: true
+    restore_value: false
     min_value: 1
     max_value: 63
     step: 1
@@ -380,29 +380,29 @@ number:
     name: "Waveform Candidate B Frames"
     entity_category: diagnostic
     optimistic: true
-    restore_value: true
+    restore_value: false
     min_value: 1
     max_value: 63
     step: 1
-    initial_value: 4
+    initial_value: 3
     on_value:
       - lambda: id(x4_display).set_candidate_frames(1, x);
   - platform: template
     name: "Waveform Candidate C Frames"
     entity_category: diagnostic
     optimistic: true
-    restore_value: true
+    restore_value: false
     min_value: 1
     max_value: 63
     step: 1
-    initial_value: 6
+    initial_value: 4
     on_value:
       - lambda: id(x4_display).set_candidate_frames(2, x);
   - platform: template
     name: "Waveform Pulse Rail Code"
     entity_category: diagnostic
     optimistic: true
-    restore_value: true
+    restore_value: false
     min_value: 1
     max_value: 2
     step: 1
@@ -413,18 +413,18 @@ number:
     name: "Waveform Opposite Frames"
     entity_category: diagnostic
     optimistic: true
-    restore_value: true
+    restore_value: false
     min_value: 0
     max_value: 63
     step: 1
-    initial_value: 0
+    initial_value: 3
     on_value:
       - lambda: id(x4_display).set_pulse_opposite(x);
   - platform: template
     name: "Waveform Pulse Repeats"
     entity_category: diagnostic
     optimistic: true
-    restore_value: true
+    restore_value: false
     min_value: 1
     max_value: 16
     step: 1
@@ -435,7 +435,7 @@ number:
     name: "Waveform Neutral Frames"
     entity_category: diagnostic
     optimistic: true
-    restore_value: true
+    restore_value: false
     min_value: 0
     max_value: 63
     step: 1
@@ -446,7 +446,7 @@ number:
     name: "Waveform Hold Rail Code"
     entity_category: diagnostic
     optimistic: true
-    restore_value: true
+    restore_value: false
     min_value: 0
     max_value: 3
     step: 1
@@ -511,7 +511,7 @@ number:
     name: "Waveform B-W Frames"
     entity_category: diagnostic
     optimistic: true
-    restore_value: true
+    restore_value: false
     min_value: 1
     max_value: 63
     step: 1
@@ -522,7 +522,7 @@ number:
     name: "Waveform B-W Repeats"
     entity_category: diagnostic
     optimistic: true
-    restore_value: true
+    restore_value: false
     min_value: 1
     max_value: 16
     step: 1
@@ -533,7 +533,7 @@ number:
     name: "Waveform B-W Inversion Frames"
     entity_category: diagnostic
     optimistic: true
-    restore_value: true
+    restore_value: false
     min_value: 0
     max_value: 63
     step: 1
