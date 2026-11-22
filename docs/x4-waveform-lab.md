@@ -31,7 +31,7 @@ another panel; the path continues to use this module's programmed defaults.
 * Factory OTP: runs the panel's full B/W waveform, whose payload is unavailable.
 * Programmable B-W Drive: original inversion -> target -> one hold count;
   uses existing inversion/target/repeat controls and the gray Hold Rail Code.
-* Conditioned B-W Drive: activation -> white reference -> rest-code interval ->
+* Conditioned B-W Drive: activation -> optional white reference -> rest-code interval ->
   inversion/target -> tail-code interval, inside one LUT activation.
 
 Conditioned default, R=1, I=F=20:
@@ -39,16 +39,18 @@ Conditioned default, R=1, I=F=20:
 | Stage | Black-target pixels | White-target pixels | Modeled counts |
 |---|---|---|---:|
 | Activation | code 1, then code 2 | code 1, then code 2 | (2+2) x2 |
-| Common reference | code 2 | code 2 | 20 |
+| Optional common reference | disabled | disabled | 0 |
 | Rest | rest code | rest code | 3 |
-| First inversion interval | rest code | code 1 | 20 |
+| First inversion interval | code 2 | code 1 | 20 |
 | Target | code 1 | code 2 | 20 |
 | Tail | rest code | rest code | 3 |
 
-The default has 74 modeled counts in all five rows. VCOM remains code 0. The
-white reference already puts black-target pixels at their inverted endpoint,
-so another white drive is unnecessary on the first cycle. Later repeats invert
-both targets. Disabling the reference restores the ordinary inversion for both.
+The default has 54 modeled counts in all five rows. VCOM remains code 0. The
+reference defaults off to avoid adding an asymmetric endpoint dose to the
+existing 20/20 experiment. Equal source-code counts are not measured DC balance.
+When the white reference is enabled, black-target pixels already have their
+inverted endpoint, so another white drive is unnecessary on the first cycle.
+Later repeats invert both targets.
 Shorter black/white target rows receive rest-code padding to match the longest.
 
 These are raw action codes and modeled counts, not measured voltage or time.
@@ -69,7 +71,7 @@ reboot; actual persistence of existing settings remains subject to the NVS issue
 | Repeats | 1; 1–16 | both programmable | Repeats inversion/target/ending cycle. Activation/reference run once. More increases duration and dose; try 1 before increasing. |
 | Activation Frames | 2; 0–8 | conditioned | Width of each dark/light activation pulse. Zero disables activation. Longer may reduce retained-state dependence but adds excursions and may worsen noise. |
 | Activation Cycles | 2; 0–4 | conditioned | Number of dark/light pairs. Zero disables activation; higher increases conditioning and flicker. |
-| Reference Frames | 20; 0–63 | conditioned | Common white drive before the image. Higher may make the reference more reproducible; excess may worsen white texture. Zero tests without this stage. |
+| Reference Frames | 0; 0–63 | conditioned | Optional common white drive before the image. Higher may make the reference more reproducible, but adds an asymmetric dose and may worsen texture/drift. Disabled by default; try separately from activation. |
 | Rest Frames | 3; 0–16 | conditioned | Source rest-code scans after reference. More gives a longer interval under that electrical code, not a proven discharge. |
 | Tail Frames | 3; 0–16 | conditioned | Rest-code scans after each target cycle. Tests whether ending treatment affects drift/noise. Zero removes the tail. |
 | White Frames | 0; 0–63 | conditioned | 0 follows Frames; positive values independently set white-target length. Useful for black/white response asymmetry. Shorter row is padded, so total duration follows the longer target. |

@@ -547,7 +547,7 @@ number:
     min_value: 0
     max_value: 63
     step: 1
-    initial_value: 20
+    initial_value: 0
     on_value:
       - lambda: id(x4_display).set_bw_reference_frames(x);
   - platform: template
