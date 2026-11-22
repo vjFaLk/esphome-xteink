@@ -105,7 +105,10 @@ are full B/W preparation operations, not a single unconditioned rail pulse.
 
 The transport keeps its most recent 96 diagnostic events in RAM. Press Export
 Timing after the operation completes, or enable Detailed Logging to export after
-each job. Collection performs no serial logging during a waveform. Binary/hex
+each job. A frozen snapshot is exported one record per 50 ms, with BEGIN/END
+markers (up to about five seconds); export pauses during a new waveform. This
+avoids the dropped records seen with a burst export. Collection performs no
+serial logging during a waveform. Binary/hex
 LUT export still records the exact accepted source/VCOM payloads separately.
 
 Example (illustrative, not a measured device result):
@@ -147,3 +150,44 @@ same target. Then compare Factory OTP, simple programmable and conditioned
 programmable. Start with R=1, I/F=20, rest/VCOM=0; vary one conditioning setting
 at a time and inspect immediately, after a delay, and after repeated updates.
 There is no automatic stress loop.
+
+## Cold-start correction and landscape targets
+
+The user's IMG_5323 video shows a clear known image within a warmed calibration
+session, a clean return to the boiler UI, then weak overlays after re-entry.
+The same conditioned waveform working immediately after factory OTP strongly
+suggests an initialization dependency; it does not establish a particular missing
+voltage register. Earlier API completion checks did not prove optical clearing.
+
+This revision removes an independent DTM assumption: both programmable B/W
+profiles now drive all four selector rows according to NEW, even if OLD is not
+what the host expected. The B/W OLD plane is the complement of NEW to force a
+transition, matching the ordinary driver's scrub. All operations upload NEW
+first and OLD last, and hidden B/W gates are white like the ordinary driver.
+Candidate selectors still explicitly upload both planes.
+
+Power-on selects OTP mode before PON. After PON completes, the transport
+reasserts KW mode, geometry and data setup before either plane upload. It only
+selects the external LUT immediately before that refresh. No drive-voltage
+values are invented or copied from a different panel.
+
+**Factory Prime On Cold Start** is a separate switch, OFF by default. When ON,
+the first programmable B/W preparation after reset or power-off runs an actual
+factory OTP refresh of that target, rewrites both planes, then runs the selected
+programmable recipe without reset/power-cycle. It reproduces the user's proven
+warm sequence. A factory B/W refresh within the session also marks it primed.
+Turning the switch OFF does not undo settings/physical conditioning already
+established by OTP; exit/re-enter for a cold comparison. The primer is an extra
+refresh, distinct from the inversion phases inside the programmable LUT. It can
+change physical conditioning as well as controller configuration, so success
+with priming alone does not prove an analog-register cause.
+
+**Show Dithered Landscape** renders the preserved grayscale photograph through
+the B/W ordered quantizer. **Show Grayscale Landscape** adds the current A/B/C
+candidate doses using eight provisional input buckets, three from black and
+three from white plus the endpoints. Its title labels the tones unmeasured.
+This is an experimental photo target, not a calibrated palette or enabled
+production grayscale mode. Both use full-screen preparation; the gray trial
+uses full-screen selector upload/activation and preserves its B/W title/credit.
+The photo is Ansel Adams's public-domain *The Tetons - Snake River* (NARA 519904);
+the source and asset-generation details are preserved in the rendering library.

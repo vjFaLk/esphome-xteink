@@ -2,6 +2,15 @@
 # Raw rail semantics are experimental. No automatic repeat or boot-time drive.
 switch:
   - platform: template
+    name: "Waveform Factory Prime On Cold Start"
+    entity_category: diagnostic
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: id(x4_display).set_bw_factory_prime(true);
+    turn_off_action:
+      - lambda: id(x4_display).set_bw_factory_prime(false);
+  - platform: template
     id: waveform_lab
     name: "Waveform Calibration"
     entity_category: diagnostic
@@ -120,6 +129,20 @@ button:
       - switch.turn_on: waveform_lab
       - script.wait: waveform_take_control
       - lambda: id(x4_display).repeat_calibration_image();
+  - platform: template
+    name: "Waveform Show Dithered Landscape"
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: id(x4_display).show_calibration_image(5);
+  - platform: template
+    name: "Waveform Show Grayscale Landscape"
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: id(x4_display).show_calibration_image(6);
 
 script:
   - id: waveform_take_control

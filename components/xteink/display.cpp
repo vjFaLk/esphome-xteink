@@ -192,7 +192,7 @@ void XteinkDisplay::configure_lab_() {
 }
 bool XteinkDisplay::show_calibration_image(uint8_t image, uint32_t seed) {
   if (!calibration_active_ || lab_->busy() || exit_requested_ ||
-      image < 1 || image > 4) return false;
+      image < 1 || image > 6) return false;
   configure_lab_();
   if (!lab_->startImage(millis(), ::x4render::TestImage(image), seed)) return false;
   last_test_image_ = image;
@@ -204,7 +204,8 @@ bool XteinkDisplay::repeat_calibration_image() {
 }
 std::string XteinkDisplay::calibration_image() const {
   if (!lab_) return "none";
-  const char* names[] = {"calibration", "white", "black", "known reference", "random edges"};
+  const char* names[] = {"calibration", "white", "black", "known reference", "random edges",
+                         "landscape dither", "landscape gray trial"};
   char value[80];
   std::snprintf(value, sizeof(value), "%s; seed %08lX", names[uint8_t(lab_->image())],
                 (unsigned long)lab_->imageSeed());
@@ -258,16 +259,29 @@ void XteinkDisplay::loop() {
     if (exit_requested_) end_calibration();
   }
 }
-void XteinkDisplay::log_calibration_timing() const {
+void XteinkDisplay::log_calibration_timing() {
   if (!transport_ || lab_->busy()) return;
-  const char* names[] = {"reset", "write", "upload", "issue", "busy-on", "busy-off",
+  static const char* names[] = {"reset", "write", "upload", "issue", "busy-on", "busy-off",
                          "assert-timeout", "complete-timeout"};
-  for (size_t i = 0; i < transport_->traceSize(); ++i) {
-    const auto& e = transport_->traceEvent(i);
+  timing_index_ = 0;
+  timing_size_ = transport_->traceSize();
+  for (size_t i = 0; i < timing_size_; ++i)
+    timing_snapshot_[i] = transport_->traceEvent(i);
+  ESP_LOGI(TAG, "LABTIME BEGIN count=%u", unsigned(timing_size_));
+  // Pace a frozen snapshot after the operation; a burst can overflow API log
+  // queues. Pause export while any new waveform is running.
+  set_interval("lab_timing_export", 50, [this]() {
+    if (lab_->busy()) return;
+    if (timing_index_ == timing_size_) {
+      ESP_LOGI(TAG, "LABTIME END");
+      cancel_interval("lab_timing_export");
+      return;
+    }
+    const auto& e = timing_snapshot_[timing_index_++];
     ESP_LOGI(TAG, "LABTIME t=%lu %s cmd=%02X detail=%lu poll-gap=%lu",
              (unsigned long)e.at, names[uint8_t(e.event)], e.command,
              (unsigned long)e.detail, (unsigned long)e.pollGap);
-  }
+  });
 }
 const char* XteinkDisplay::calibration_pipeline() const {
   if (!calibration_active_ || !lab_) return "boiler_bw_preview";
@@ -276,6 +290,8 @@ const char* XteinkDisplay::calibration_pipeline() const {
   switch (lab_->job()) {
     case J::PowerOn:
       return "calibration_power_on";
+    case J::Prime:
+      return "factory_otp_cold_start_prime";
     case J::Base:
       return lab_->factoryPreparation() ? "otp_full_bw_starts"
                                         : "programmable_bw_starts";
@@ -310,7 +326,7 @@ std::string XteinkDisplay::calibration_assignments() const {
   const uint8_t r = lab_->programmedRotation();
   std::snprintf(
       text, sizeof(text),
-      "v4 conditioned-BW; opposite-first; id %u; left=%c middle=%c right=%c",
+      "v5 absolute-BW; opposite-first; id %u; left=%c middle=%c right=%c",
       unsigned(lab_->waveformId()), 'A' + r, 'A' + (r + 1) % 3,
       'A' + (r + 2) % 3);
   return text;
@@ -321,7 +337,7 @@ void XteinkDisplay::log_calibration_waveforms() const {
   const uint8_t rows[5] = {0, ::x4render::Row[1], ::x4render::Row[2],
                            ::x4render::Row[3], ::x4render::Row[0]};
   const char* names[5] = {"VCOM", "A", "B", "C", "HOLD"};
-  const char* prepNames[5] = {"VCOM", "UNUSED01", "BLACK", "WHITE", "HOLD00"};
+  const char* prepNames[5] = {"VCOM", "WHITE01", "BLACK10", "WHITE11", "BLACK00"};
   for (bool preparation : {false, true})
     for (uint8_t i = 0; i < 5; ++i) {
       const auto* lut = preparation ? lab_->preparationLut(rows[i])

@@ -77,6 +77,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_bw_rest_rail(uint8_t v) { bw_preparation_.restRail = v; }
   void set_bw_vcom_rail(uint8_t v) { bw_preparation_.vcomRail = v; }
   void set_bw_pause(uint16_t v) { bw_preparation_.pauseMs = v; }
+  void set_bw_factory_prime(bool v) { bw_preparation_.factoryPrime = v; }
   bool show_calibration_image(uint8_t image, uint32_t seed = 0);
   bool repeat_calibration_image();
   std::string calibration_image() const;
@@ -89,7 +90,7 @@ class XteinkDisplay : public display::DisplayBuffer {
                                    bool preparation = false) const;
   std::string calibration_assignments() const;
   void log_calibration_waveforms() const;
-  void log_calibration_timing() const;
+  void log_calibration_timing();
   void set_vertical_window(bool v) { vertical_window_ = v; }
   void set_cropped_upload(bool v) { cropped_upload_ = v; }
   void set_detailed_logging(bool v) { detailed_ = v; }
@@ -147,6 +148,8 @@ class XteinkDisplay : public display::DisplayBuffer {
   bool exit_shutdown_attempted_{false}, exit_failed_{false};
   uint8_t last_test_image_{3};
   uint32_t last_image_seed_{0};
+  std::array<freeink::Uc8279X4Transport::TraceEvent, 96> timing_snapshot_{};
+  size_t timing_size_{0}, timing_index_{0};
   bool vertical_window_{false}, cropped_upload_{false}, detailed_{false};
   int refresh_mode_{HALF_REFRESH}, requested_mode_{0};
   uint32_t full_every_{0}, partials_{0};
