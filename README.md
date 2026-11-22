@@ -173,3 +173,62 @@ then compile the examples (`cd examples && esphome compile x4.yaml` …) and ope
   ESPHome integration, whose YAML surface this repo stays compatible with.
 
 MIT licensed; see `LICENSE` and `NOTICE`.
+
+## X4 Pro waveform calibration branch
+
+This branch stops at the physical calibration checkpoint. Normal boiler output
+uses ordered B/W preview; the two grayscale mode requests remain explicitly gated
+until measured palettes, hold behavior, and preparation waveforms are accepted.
+Selective minute wakes and retained-controller rendering are a later stage.
+
+Dependencies are pinned Git submodules in `components/xteink/dependencies`:
+FreeInk owns board communication and the raw UC8279 transport; `xteink-rendering`
+owns deterministic quantization, two 8-bit frame histories, masks, waveforms,
+pipeline validation, and calibration layouts. ESPHome owns LVGL/HA integration,
+display scheduling, and sleep arbitration. `dependencies.json` checks the exact
+revisions even when ESPHome's external-component clone omits submodule init.
+
+Clone with `git clone --recurse-submodules`. For an existing checkout, run
+`git submodule update --init --recursive`. No patch/sync step is used.
+
+The included `packages/x4_waveform_lab.yaml` binds to the boiler configuration's
+`x4_display`, `ds`, `ota_hold`, LVGL, and named sleep/UI scripts. It is an optional
+boiler-specific diagnostic package, not a generic board package. Entering the lab
+pauses LVGL and prevents sleep. Every waveform is manually requested. Exiting
+waits for the active waveform and pump shutdown, resets legacy controller state,
+and rebuilds the boiler page before releasing normal sleep scheduling.
+
+Use **Waveform Rebuild B-W Starts** first. A/B/C show pure black and pure white
+starts in the upper 75 rows, with ordered ramps in the bottom 15 rows. Candidate C
+crosses x752. **Repeat With Held References** drives the candidates while keeping
+white/black/gray references on selector 00. **Rotate Candidates** tests transitions
+without resetting starts. Rebuild after changing pulse parameters so labels stay
+accurate. Raw frame counts are not milliseconds; rail 1/2 polarity and rail 3's
+meaning are not established for the matching silicon. Source VSS is not assumed
+to produce zero field relative to VCOM.
+
+Default activation omits PTL and spans complete visible lines/full height.
+Vertical-window and cropped full-line upload experiments are off by default.
+Uploads and activation windows are separate. A cropped upload always restores a
+full-width activation window. No horizontal activation restriction is offered.
+
+Enter six observed luminances in the **Measured A/B/C Black/White Start** controls
+only after measuring/comparing the screen. **Waveform Measured Shade Order** sorts
+those inputs and reports gaps. No calibrated levels or ordering are preselected.
+Duration, RAM-plane bytes, mask counts, regions, pipeline, completion, and cycles
+are separate diagnostics. Uploaded bytes count DTM payloads, including hidden gate
+padding; register/LUT command traffic is excluded.
+
+The custom LUT interpretation is experimental. The exact UC8279 datasheet was not
+available; recovered 7-byte records and a controller emulator support the proposed
+packing, but do not validate repeat, source/VCOM voltages, floating/hold options,
+or waveform-end behavior on this unit. The unresolved QY 290-byte split is not
+used. Host tests prove software behavior; panel photographs/measurements remain
+necessary before using these waveforms in normal rendering.
+
+Host validation:
+
+```sh
+python3 components/xteink/dependencies/rendering/test/run.py
+python3 components/xteink/dependencies/freeink/libs/display/FreeInkDisplay/test/host/run_x4_transport.py
+```

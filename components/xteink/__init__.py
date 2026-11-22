@@ -1,8 +1,8 @@
 """Xteink X4 / X3 / X4 Pro hub for ESPHome, built on the FreeInk SDK.
 
-The SDK is vendored unmodified under ./sdk (see scripts/sync-sdk.sh). At codegen
-time it is copied into <build>/lib/xteink-sdk and every lib is declared as a
-PlatformIO lib_dep, so the SDK's own library.json files drive the build.
+FreeInk and the rendering library are pinned Git submodules. Code generation
+initializes and verifies their exact revisions, then merges the selected SDK
+libraries with this integration's logging adapter for the ESPHome build.
 """
 
 import hashlib
@@ -25,9 +25,8 @@ CONF_XTEINK_ID = "xteink_id"
 # X4 only: keep the GPIO13 battery MOSFET on through deep sleep so the RTC timer can
 # wake the board. Costs ~3-4 mA asleep on that PCB; off = a real power cut, button wake only.
 CONF_HOLD_BATTERY_LATCH = "hold_battery_latch"
-# X4 Pro only: use controller power-off (POF) while the MCU sleeps, preserving
-# controller RAM/registers for differential wake updates. False sends the normal
-# deep-sleep command (DSLP); the first display update after wake is then full.
+# Compatibility option: retention is gated until the selective-wake physical
+# validation stage. The calibration firmware uses normal controller shutdown.
 CONF_RETAIN_DISPLAY_CONTROLLER = "retain_display_controller"
 
 # model -> (esp32 variant, FreeInk device flag)

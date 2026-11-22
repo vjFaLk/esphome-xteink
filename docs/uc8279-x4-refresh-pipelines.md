@@ -1,5 +1,11 @@
 # UC8279 X4 refresh pipelines
 
+The observations below document the former `2162a84` implementation. The
+calibration architecture replaces its experimental pipelines with pinned
+FreeInk/rendering dependencies. See the README calibration section for current
+behavior. Historical optical observations remain evidence; proposed electrical
+explanations are not established controller semantics.
+
 The Xteink X4 Pro driver tracks three separate states: host framebuffers,
 controller DTM1/DTM2 RAM, and charge visible on the panel. A RAM write does not
 change the visible panel until DRF completes. Reset and deep sleep invalidate
