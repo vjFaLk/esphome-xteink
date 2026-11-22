@@ -209,8 +209,11 @@ to produce zero field relative to VCOM.
 
 Default activation omits PTL and spans complete visible lines/full height.
 Vertical-window and cropped full-line upload experiments are off by default.
-Uploads and activation windows are separate. A cropped upload always restores a
-full-width activation window. No horizontal activation restriction is offered.
+Uploads and activation windows are separate. Cropping is used only when the
+vertical-window experiment is also enabled, so a full-height activation cannot
+expose stale selectors outside the uploaded rows. A cropped upload always
+restores a full-width activation window over the uploaded rows. No horizontal
+activation restriction is offered.
 
 Enter six observed luminances in the **Measured A/B/C Black/White Start** controls
 only after measuring/comparing the screen. **Waveform Measured Shade Order** sorts
