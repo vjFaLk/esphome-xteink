@@ -443,3 +443,14 @@ number:
     initial_value: 1
     on_value:
       - lambda: id(x4_display).set_bw_repeats(x);
+  - platform: template
+    name: "Waveform B-W Inversion Frames"
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: true
+    min_value: 0
+    max_value: 63
+    step: 1
+    initial_value: 16
+    on_value:
+      - lambda: id(x4_display).set_bw_inversion_frames(x);

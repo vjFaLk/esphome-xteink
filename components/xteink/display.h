@@ -67,6 +67,9 @@ class XteinkDisplay : public display::DisplayBuffer {
     bw_preparation_.programmable = programmable;
   }
   void set_bw_frames(uint8_t value) { bw_preparation_.frames = value; }
+  void set_bw_inversion_frames(uint8_t value) {
+    bw_preparation_.inversionFrames = value;
+  }
   void set_bw_repeats(uint8_t value) { bw_preparation_.repeats = value; }
   std::string calibration_waveform(uint8_t row, bool hex = false,
                                    bool preparation = false) const;

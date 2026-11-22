@@ -252,10 +252,11 @@ std::string XteinkDisplay::calibration_assignments() const {
   if (!lab_ || !lab_->settleLut(0)) return "not programmed";
   char text[100];
   const uint8_t r = lab_->programmedRotation();
-  std::snprintf(text, sizeof(text),
-                "v2 opposite-first; id %u; left=%c middle=%c right=%c",
-                unsigned(lab_->waveformId()), 'A' + r, 'A' + (r + 1) % 3,
-                'A' + (r + 2) % 3);
+  std::snprintf(
+      text, sizeof(text),
+      "v3 inverse-BW; opposite-first; id %u; left=%c middle=%c right=%c",
+      unsigned(lab_->waveformId()), 'A' + r, 'A' + (r + 1) % 3,
+      'A' + (r + 2) % 3);
   return text;
 }
 void XteinkDisplay::log_calibration_waveforms() const {
