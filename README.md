@@ -257,3 +257,19 @@ code 1 drives black and code 2 drives white, followed by one hold count. Factory
 OTP remains the baseline comparison. Frames/Repetitions affect preparation only,
 not A/B/C settle durations. Inspect the upper 75 solid rows of each test patch;
 the bottom 15 contain intentional ordered ramps.
+
+### Inverted-image preparation phase
+
+Programmable B/W preparation now performs **inverted image → requested B/W image
+→ hold**. **Waveform B-W Inversion Frames** controls the first phase (0–63;
+zero disables it for comparison). **Waveform B-W Frames** continues to control
+the final target phase. **Waveform B-W Repeats** repeats the complete cycle.
+The new field defaults to 16. During this user's update, the saved 20-count B/W
+target and two repeats were retained, with inversion initially set to 20.
+
+Before deployment, the user's best current settings were exported: A/B/C=2/3/4,
+rail=2, opposite prefix=3, repeats=1, neutral=1, hold=0, B/W=20 counts ×2,
+Factory OTP preparation, with vertical-window and cropped-upload experiments on.
+Their restoration is checked through the authenticated device API. Preference
+storage previously reported insufficient space, so exported settings remain
+necessary backup evidence; no device NVS erase is performed.
