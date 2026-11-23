@@ -11,6 +11,8 @@ namespace xteink {
 static const char* const TAG = "xteink.display";
 static constexpr int TunedBwMode = 3;
 static constexpr ::x4render::FactoryBwTuning TunedBoilerWaveform{1, 2, 5, 0, 3};
+static constexpr std::array<::x4render::Pulse, 3> RelativePulses{{
+    {2, 2, 3, 1, 1}, {2, 3, 3, 1, 1}, {2, 4, 3, 1, 1}}};
 void XteinkDisplay::setup() {
   disable_loop();
   if (get_width_internal() == 800 && get_height_internal() == 480)
@@ -24,23 +26,56 @@ void XteinkDisplay::setup() {
 }
 bool XteinkDisplay::set_rendering_mode(int mode) {
   if (mode < 0 || mode > TunedBwMode) return false;
-  if (mode == 1 || mode == 2) {
-    ESP_LOGW(TAG,
-             "Mode %d awaits measured palette and validated hold; B/W preview "
-             "remains active",
-             mode);
+  if (mode && BoardConfig::ACTIVE.displayController != BoardConfig::DisplayController::UC8279)
     return false;
-  }
-  if (mode == TunedBwMode && BoardConfig::ACTIVE.displayController != BoardConfig::DisplayController::UC8279)
-    return false;
+  if (mode == 1 && !::x4render::measuredStablePalette(stable_luminance_).calibrated) return false;
+  if (mode == 2 && !diagnostic_palette_().calibrated) return false;
   if (requested_mode_ == mode) return true;
   requested_mode_ = mode;
   force_full_ = true;
   dirty_ = true;
   return true;
 }
+void XteinkDisplay::refresh_rendering_mode() {
+  if (calibration_active_ || !has_frame_) return;
+  if (pending_)
+    redraw_requested_ = true;
+  else
+    update();
+}
+bool XteinkDisplay::set_render_demo(bool enabled) {
+  if (render_demo_ == enabled) return false;
+  render_demo_ = enabled;
+  force_full_ = dirty_ = true;
+  if (enabled) refresh_rendering_mode();
+  return true;
+}
+void XteinkDisplay::set_render_demo_marker(bool enabled) {
+  if (render_demo_marker_ == enabled) return;
+  render_demo_marker_ = enabled;
+  if (!render_demo_) return;
+  dirty_ = true;
+  refresh_rendering_mode();
+}
+void XteinkDisplay::paint_demo_() {
+  using namespace ::x4render;
+  for (uint16_t y = 0; y < Height; ++y)
+    for (uint16_t x = 0; x < Width; ++x) {
+      uint8_t value = 255;
+      if (y < 392)
+        value = landscapeLuma(size_t(y) * Height / 392 * Width + x);
+      else if (y < 436) {
+        const uint8_t swatch = x / 160;
+        value = swatch == 0 ? 0 : swatch == 4 ? 255 :
+            requested_mode_ == 1 ? stable_luminance_[swatch - 1] : swatch * 64;
+      }
+      else if (y >= 449 && y < 470 && render_demo_marker_ && x >= 742 && x < 764)
+        value = requested_mode_ == 1 ? stable_luminance_[1] : 128;
+      frames_.draw(size_t(y) * Width + x, value);
+    }
+}
 void XteinkDisplay::draw_absolute_pixel_internal(int x, int y, Color color) {
-  if (calibration_active_ || frozen_ || pending_ || tuned_state_ == TunedState::Held || x < 0 || y < 0 ||
+  if (calibration_active_ || frozen_ || pending_ || render_demo_ || tuned_state_ == TunedState::Held || x < 0 || y < 0 ||
       x >= get_width_internal() || y >= get_height_internal())
     return;
   auto& epd = parent_->display();
@@ -74,7 +109,9 @@ void XteinkDisplay::draw_pixels_at(int x, int y, int w, int h, const uint8_t* p,
 void XteinkDisplay::update() {
   if (calibration_active_ || frozen_ || pending_ || tuned_state_ == TunedState::Held) return;
   auto& epd = parent_->display();
-  if (writer_.has_value()) {
+  if (render_demo_ && ready_) {
+    if (dirty_) paint_demo_();
+  } else if (writer_.has_value()) {
     if (auto_clear_enabled_) {
       if (ready_)
         frames_.target.clear(255);
@@ -85,6 +122,16 @@ void XteinkDisplay::update() {
     (*writer_)(*this);
   }
   if (virtual_ || !dirty_) return;
+  if (gray_mode_() && ready_) {
+    dirty_ = false;
+    const bool periodic = full_every_ && partials_ >= full_every_;
+    const bool force = force_full_ || refresh_mode_ == FULL_REFRESH || periodic;
+    if (begin_gray_(force)) {
+      force_full_ = false;
+      if (pending_) partials_ = force ? 0 : partials_ + 1;
+    }
+    return;
+  }
   if (requested_mode_ == TunedBwMode && ready_) {
     dirty_ = false;
     if (!force_full_ && has_frame_ &&
@@ -94,7 +141,7 @@ void XteinkDisplay::update() {
   }
   if (ready_) {
     ::x4render::Settings s;
-    if (!frames_.plan(s)) return;
+    if (!frames_.plan(s, force_full_)) return;
     if (!frames_.driven && has_frame_ && !force_full_) {
       std::memcpy(frames_.displayed.data(), frames_.target.data(),
                   ::x4render::Pixels);
@@ -155,21 +202,70 @@ bool XteinkDisplay::finish_normal_(bool wait) {
   if (!calibration_active_) disable_loop();
   return true;
 }
-bool XteinkDisplay::acquire_controller_() {
+bool XteinkDisplay::acquire_controller_(bool for_lab) {
   auto* bus = parent_->display().beginControllerSession();
   if (!bus) return false;
   if (!transport_) {
     transport_.emplace(*bus, []() -> uint32_t { return millis(); });
-    lab_.emplace(*transport_);
   }
-  if (!lab_->allocate()) {
+  if (for_lab && !lab_) lab_.emplace(*transport_);
+  if (for_lab && !lab_->allocate()) {
     parent_->display().endControllerSession();
     return false;
   }
   transport_->clearTrace();
   transport_->reset();
   factory_error_ = nullptr;
-  lab_->invalidate();
+  if (lab_) lab_->invalidate();
+  return true;
+}
+bool XteinkDisplay::begin_gray_(bool force) {
+  using namespace ::x4render;
+  Settings settings;
+  settings.mode = requested_mode_ == 1 ? Mode::SingleSettle : Mode::DitherSettle;
+  const bool relative = settings.mode == Mode::DitherSettle;
+  factory_error_ = nullptr;
+  settings.palette = relative ? diagnostic_palette_() : measuredStablePalette(stable_luminance_);
+  if (!frames_.plan(settings, force)) return false;
+  if (!frames_.driven) return frames_.commit();
+
+  const auto snapshot = freeink::getXteinkPanelMtpSnapshot();
+  const int temp = snapshot.temperatureC != -128 ? snapshot.temperatureC : 30;
+  const auto profile = freeink::observedX4FactoryProfile(
+      snapshot.data, snapshot.size, snapshot.verified,
+      freeink::getXteinkDisplayProbeDiag().ver[2], temp);
+  LutBank bw, gray;
+  if (!profile.power.valid || !tuneFactoryBw(profile.rows, TunedBoilerWaveform, bw) ||
+      (!relative && !stableGrayBank(bw, stable_render_frames_, gray))) {
+    frames_.phase = Phase::Idle;
+    factory_error_ = "Gray factory table or pulse profile unavailable";
+    return false;
+  }
+  if (relative) gray = candidates(RelativePulses);
+  if (!gray_refresh_.plan(bw, gray, 96, 40)) {
+    frames_.phase = Phase::Idle;
+    gray_result_ = "Source budget exceeds three zones";
+    return false;
+  }
+  if (!acquire_controller_(false)) {
+    frames_.phase = Phase::Idle;
+    gray_result_ = "Controller unavailable";
+    return false;
+  }
+  transport_->setPanelPower(profile.power, 2);
+  transport_->setCalibrationTemperature(temp);
+  gray_started_ = millis();
+  gray_driving_ = gray_refresh_.start(*transport_, gray_started_);
+  if (!gray_driving_) {
+    parent_->display().endControllerSession();
+    frames_.fail();
+    gray_result_ = "Could not start gray drive";
+    return false;
+  }
+  gray_result_ = "running";
+  tuned_state_ = TunedState::Driving;
+  pending_ = true;
+  enable_loop();
   return true;
 }
 bool XteinkDisplay::begin_tuned_bw_() {
@@ -215,10 +311,17 @@ bool XteinkDisplay::begin_tuned_bw_() {
 bool XteinkDisplay::poll_tuned_bw_() {
   using Status = freeink::Uc8279X4Transport::Status;
   if (tuned_state_ == TunedState::Driving) {
-    if (lab_->busy() && !lab_->poll(millis())) return false;
-    tuned_completed_ = tuned_completed_ && std::strcmp(lab_->result(), "complete") == 0;
+    if (gray_driving_) {
+      using Stage = ::x4render::GrayRefresh::Stage;
+      if (!gray_refresh_.poll(*transport_, millis())) return false;
+      tuned_completed_ = gray_refresh_.stage == Stage::Done;
+      factory_error_ = tuned_completed_ ? nullptr : "Gray refresh completion unknown";
+    } else {
+      if (lab_->busy() && !lab_->poll(millis())) return false;
+      tuned_completed_ = tuned_completed_ && std::strcmp(lab_->result(), "complete") == 0;
+      factory_error_ = tuned_completed_ ? nullptr : lab_->result();
+    }
     // Power-off is a separate transaction. Keep the useful render result.
-    factory_error_ = tuned_completed_ ? nullptr : lab_->result();
     if (transport_->status() != Status::Off && transport_->powerOff(millis())) {
       tuned_state_ = TunedState::PoweringOff;
       return false;
@@ -226,6 +329,12 @@ bool XteinkDisplay::poll_tuned_bw_() {
   } else if (transport_->poll(millis()) == freeink::Uc8279X4Transport::Result::Pending) {
     return false;
   }
+  const bool gray = gray_driving_;
+  if (gray) {
+    gray_duration_ = millis() - gray_started_;
+    gray_bytes_ = transport_->uploadedBytes();
+  }
+  gray_driving_ = false;
   if (transport_->status() != Status::Off) {
     tuned_state_ = TunedState::Held;
     factory_error_ = "Tuned boiler power-off unconfirmed";
@@ -237,11 +346,14 @@ bool XteinkDisplay::poll_tuned_bw_() {
     return true;
   }
   parent_->display().endControllerSession();
-  if (frames_.prepared(tuned_completed_) && frames_.commit()) {
+  if (tuned_completed_ && (gray || frames_.prepared(true)) && frames_.commit()) {
     has_frame_ = true;
     update_count++;
+    if (gray) gray_result_ = "complete";
   } else {
+    frames_.fail();
     has_frame_ = false;
+    if (gray) gray_result_ = "Gray refresh completion unknown";
   }
   pending_ = false;
   tuned_state_ = TunedState::Idle;
@@ -352,6 +464,8 @@ bool XteinkDisplay::repeat_calibration_image() {
   return show_calibration_image(last_test_image_, last_image_argument_);
 }
 std::string XteinkDisplay::calibration_image() const {
+  if (!calibration_active_ && (gray_mode_() || render_demo_))
+    return render_demo_ ? "landscape renderer demo" : "LVGL";
   if (!lab_) return "none";
   if (lab_->stableChart()) return "stable gray chart";
   if (lab_->image() == ::x4render::TestImage::LoadStrip) {
@@ -421,6 +535,9 @@ std::string XteinkDisplay::calibration_bw_charge() const {
   return value;
 }
 std::string XteinkDisplay::calibration_bw_zones() const {
+  if (!calibration_active_ && gray_mode_())
+    return std::to_string(gray_refresh_.preparationPasses()) + " B/W | " +
+           std::to_string(gray_refresh_.settlePasses()) + " gray passes";
   if (!lab_ || !lab_->zoneRequested()) return "No zoned plan requested";
   const auto& plan = lab_->zonePlan();
   if (!plan.count) return "Over budget with three zones";
@@ -467,7 +584,10 @@ void XteinkDisplay::end_calibration() {
 }
 void XteinkDisplay::loop() {
   if (!calibration_active_) {
-    finish_normal_(false);
+    if (finish_normal_(false) && redraw_requested_) {
+      redraw_requested_ = false;
+      update();
+    }
     return;
   }
   if (lab_->poll(millis())) {
@@ -484,7 +604,7 @@ void XteinkDisplay::loop() {
   }
 }
 void XteinkDisplay::log_calibration_timing() {
-  if (!transport_ || lab_->busy()) return;
+  if (!transport_ || pending_ || calibration_busy()) return;
   static const char* names[] = {"reset", "write", "upload", "issue", "busy-on", "busy-off",
                          "assert-timeout", "complete-timeout"};
   timing_index_ = 0;
@@ -495,7 +615,7 @@ void XteinkDisplay::log_calibration_timing() {
   // Pace a frozen snapshot after the operation; a burst can overflow API log
   // queues. Pause export while any new waveform is running.
   set_interval("lab_timing_export", 50, [this]() {
-    if (lab_->busy()) return;
+    if (pending_ || calibration_busy()) return;
     if (timing_index_ == timing_size_) {
       ESP_LOGI(TAG, "LABTIME END");
       cancel_interval("lab_timing_export");
@@ -574,8 +694,19 @@ void XteinkDisplay::log_panel_mtp() {
 const char* XteinkDisplay::calibration_pipeline() const {
   if (!calibration_active_ || !lab_) {
     if (tuned_state_ == TunedState::Held) return "boiler_tuned_power_off_unconfirmed";
-    if (tuned_state_ == TunedState::Driving) return "boiler_tuned_bw_driving";
+    if (tuned_state_ == TunedState::Driving) {
+      if (!gray_driving_) return "boiler_tuned_bw_driving";
+      using Stage = ::x4render::GrayRefresh::Stage;
+      switch (gray_refresh_.stage) {
+        case Stage::PowerOn: return "gray_power_on";
+        case Stage::Prepare: return "gray_bw_preparation";
+        case Stage::Hold: return "gray_panel_hold";
+        case Stage::Settle: return "gray_settle_driving";
+        default: return "gray_finishing";
+      }
+    }
     if (tuned_state_ == TunedState::PoweringOff) return "boiler_tuned_power_off";
+    if (gray_mode_()) return requested_mode_ == 1 ? "boiler_single_settle" : "boiler_dither_then_settle";
     return requested_mode_ == TunedBwMode ? "boiler_tuned_bw" : "boiler_bw_preview";
   }
   if (exit_failed_) return "release_failed_power_off_unconfirmed";
@@ -656,6 +787,14 @@ void XteinkDisplay::log_calibration_waveforms() const {
     }
 }
 std::string XteinkDisplay::calibration_region() const {
+  if (!calibration_active_ && gray_mode_()) {
+    const auto r = frames_.requested, e = frames_.expanded;
+    char text[160];
+    std::snprintf(text, sizeof(text),
+                  "requested %u,%u %ux%u; mask %u,%u %ux%u; activation 0,0 800x480; hold code 0",
+                  r.x, r.y, r.width, r.height, e.x, e.y, e.width, e.height);
+    return text;
+  }
   if (!lab_) return "idle";
   char text[160];
   auto r = lab_->requested, e = lab_->activationWindow();
@@ -715,7 +854,7 @@ void XteinkDisplay::dump_config() {
   LOG_DISPLAY("", "Xteink display", this);
   ESP_LOGCONFIG(
       TAG,
-      "B/W ordered preview; grayscale modes gated on physical calibration");
+      "X4 Pro renderer with B/W and calibrated grayscale profiles");
 }
 }  // namespace xteink
 }  // namespace esphome

@@ -20,6 +20,32 @@ xteink:
 
 switch:
   - platform: template
+    name: "Landscape Demo"
+    device_id: lab_session
+    entity_category: diagnostic
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: id(x4_display).set_render_demo(true);
+    turn_off_action:
+      - if:
+          condition:
+            lambda: return id(x4_display).set_render_demo(false);
+          then:
+            - lvgl.widget.redraw:
+
+  - platform: template
+    name: "Demo Marker"
+    device_id: lab_session
+    entity_category: diagnostic
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: id(x4_display).set_render_demo_marker(true);
+    turn_off_action:
+      - lambda: id(x4_display).set_render_demo_marker(false);
+
+  - platform: template
     name: "Zone Gray Settle"
     device_id: lab_gray
     entity_category: diagnostic
@@ -492,21 +518,31 @@ select:
             x == "Legacy Setup" ? 0 :
             x == "Panel Power - Experimental" ? 1 : 2);
   - platform: template
+    id: lab_render_mode
     name: "Render Mode"
     device_id: lab_session
     entity_category: diagnostic
-    optimistic: true
+    optimistic: false
+    restore_value: false
     initial_option: "B-W Tuned"
     options:
       - "B-W Tuned"
       - "B-W Dither"
-      - "Single Settle - Awaiting Calibration"
-      - "Dither Then Settle - Awaiting Calibration"
-    on_value:
+      - "Single Settle"
+      - "Dither Then Settle"
+    set_action:
       - lambda: |-
           const int mode = x == "B-W Tuned" ? 3 : x == "B-W Dither" ? 0 :
-                           x == "Single Settle - Awaiting Calibration" ? 1 : 2;
-          id(x4_display).set_rendering_mode(mode);
+                           x == "Single Settle" ? 1 : 2;
+          if (id(x4_display).set_rendering_mode(mode)) {
+            id(lab_render_mode).publish_state(x);
+            id(x4_display).refresh_rendering_mode();
+          } else {
+            ESP_LOGW("waveform_lab", "No calibrated profile for %s", x.c_str());
+          }
+    on_value:
+      - lambda: |-
+          if (x == "B-W Tuned") id(x4_display).set_rendering_mode(3);
   - platform: template
     name: "Gray Dither"
     device_id: lab_gray
@@ -771,7 +807,7 @@ number:
     step: 1
     mode: box
     optimistic: true
-    initial_value: 7
+    initial_value: 5
     on_value:
       - lambda: id(x4_display).set_stable_frames(1, uint8_t(x));
 
@@ -784,7 +820,7 @@ number:
     step: 1
     mode: box
     optimistic: true
-    initial_value: 12
+    initial_value: 7
     on_value:
       - lambda: id(x4_display).set_stable_frames(2, uint8_t(x));
 

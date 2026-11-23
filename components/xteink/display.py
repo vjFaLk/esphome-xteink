@@ -14,6 +14,14 @@ XteinkDisplayRef = XteinkDisplay.operator("ref")
 
 CONF_DITHER_LUMINANCE = "dither_luminance"
 CONF_DITHER_CURVES = "dither_curves"
+CONF_STABLE_GRAY_FRAMES = "stable_gray_frames"
+CONF_STABLE_GRAY_LUMINANCE = "stable_gray_luminance"
+
+
+def _ordered_stable_values(values):
+    if values != sorted(set(values)):
+        raise cv.Invalid("stable gray profile values must increase from G1 to G3")
+    return values
 
 def _luminances(values):
     active = [value for value in values if value]
@@ -70,6 +78,14 @@ CONFIG_SCHEMA = display.FULL_DISPLAY_SCHEMA.extend(
             cv.ensure_list(cv.All(cv.ensure_list(cv.uint8_t), _coverage_curve)),
             cv.Length(min=2, max=7),
         ),
+        cv.Optional(CONF_STABLE_GRAY_FRAMES): cv.All(
+            cv.ensure_list(cv.int_range(min=1, max=30)), cv.Length(min=3, max=3),
+            _ordered_stable_values,
+        ),
+        cv.Optional(CONF_STABLE_GRAY_LUMINANCE): cv.All(
+            cv.ensure_list(cv.int_range(min=1, max=254)), cv.Length(min=3, max=3),
+            _ordered_stable_values,
+        ),
     }
 ).extend(cv.polling_component_schema("1s"))
 
@@ -83,6 +99,8 @@ def _final_validate(config):
         raise cv.Invalid("grayscale_strategy requires grayscale: true")
     if config[CONF_GRAYSCALE_WINDOWED_UPLOAD] and not config[CONF_GRAYSCALE]:
         raise cv.Invalid("grayscale_windowed_upload requires grayscale: true")
+    if (CONF_STABLE_GRAY_FRAMES in config) != (CONF_STABLE_GRAY_LUMINANCE in config):
+        raise cv.Invalid("stable_gray_frames and stable_gray_luminance must be set together")
     if CONF_DITHER_CURVES in config:
         if CONF_DITHER_LUMINANCE not in config:
             raise cv.Invalid("dither_curves requires measured dither_luminance")
@@ -117,6 +135,10 @@ async def to_code(config):
     for pair, curve in enumerate(config.get(CONF_DITHER_CURVES, [])):
         for step, luma in enumerate(curve):
             cg.add(var.set_dither_curve(pair, step, luma))
+    for shade, (frames, luma) in enumerate(zip(
+        config.get(CONF_STABLE_GRAY_FRAMES, []), config.get(CONF_STABLE_GRAY_LUMINANCE, [])
+    )):
+        cg.add(var.set_stable_gray_profile(shade, frames, luma))
     if CONF_LAMBDA in config:
         lambda_ = await cg.process_lambda(
             config[CONF_LAMBDA], [(XteinkDisplayRef, "it")], return_type=cg.void

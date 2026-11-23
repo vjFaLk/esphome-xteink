@@ -1,0 +1,7 @@
+# Frame counts selected on the X4 Pro chart with boot-temperature table 5.
+# Factory Tuned: shake 1 x 2, white reference 5, rest trim +3, drive trim 0.
+# Luminance entries are provisional input levels, pending optical measurements.
+display:
+  - id: !extend x4_display
+    stable_gray_frames: [3, 5, 7]
+    stable_gray_luminance: [64, 128, 192]
