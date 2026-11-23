@@ -41,7 +41,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   void clear_retained_frame_tag() {}
   bool settle_grayscale() { return false; }
   bool flush_for_deep_sleep();
-  void freeze_for_deep_sleep();
+  bool freeze_for_deep_sleep();
   bool begin_panel_conditioning() { return begin_calibration(); }
   uint8_t panel_conditioning_transaction_count() const { return 1; }
   bool condition_panel_step(uint8_t) { return run_calibration(false, 0, true); }
@@ -72,6 +72,8 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_bw_burst_headroom(uint8_t value) { bw_burst_headroom_ = value; }
   void set_bw_split_guard(bool value) { bw_split_guard_ = value; }
   void set_bw_local_budget(uint8_t value) { bw_local_budget_ = value; }
+  void set_bw_rail_budget(uint16_t value) { bw_rail_budget_ = value; }
+  void set_gray_columns(bool value) { gray_columns_ = value; }
   void set_bw_activation_frames(uint8_t v) { bw_tuning_.shakeFrames = v; }
   void set_bw_activation_cycles(uint8_t v) { bw_tuning_.shakeCycles = v; }
   void set_bw_reference_frames(uint8_t v) { bw_tuning_.whiteReference = v; }
@@ -146,6 +148,9 @@ class XteinkDisplay : public display::DisplayBuffer {
 
  protected:
   bool finish_normal_(bool wait);
+  bool acquire_controller_();
+  bool begin_tuned_bw_();
+  bool poll_tuned_bw_();
   bool configure_lab_();
   int factory_temperature_() const;
   ::x4render::Palette diagnostic_palette_() const;
@@ -159,12 +164,17 @@ class XteinkDisplay : public display::DisplayBuffer {
   bool pending_{false}, has_frame_{false}, force_full_{false},
       calibration_active_{false}, exit_requested_{false};
   bool exit_shutdown_attempted_{false}, exit_failed_{false};
+  enum class TunedState : uint8_t { Idle, Driving, PoweringOff, Held };
+  TunedState tuned_state_{TunedState::Idle};
+  bool tuned_completed_{false};
   uint8_t last_test_image_{3};
   uint8_t panel_power_setup_{2}, bw_mode_{2};
   ::x4render::BwTexture bw_texture_{::x4render::BwTexture::Bayer};
   uint8_t bw_column_strength_{100}, bw_repair_strength_{100};
   uint8_t bw_column_grain_{0}, bw_burst_headroom_{0};
   uint8_t bw_local_budget_{40};
+  uint16_t bw_rail_budget_{160};
+  bool gray_columns_{true};
   bool bw_split_guard_{true};
   bool temp_override_{false};
   int manual_temp_c_{30};

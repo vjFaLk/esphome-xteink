@@ -4,10 +4,13 @@
 #include <cstring>
 #include <XteinkDetect.h>
 
+#include "esphome/core/application.h"
 #include "esphome/core/log.h"
 namespace esphome {
 namespace xteink {
 static const char* const TAG = "xteink.display";
+static constexpr int TunedBwMode = 3;
+static constexpr ::x4render::FactoryBwTuning TunedBoilerWaveform{1, 2, 5, 0, 3};
 void XteinkDisplay::setup() {
   disable_loop();
   if (get_width_internal() == 800 && get_height_internal() == 480)
@@ -20,20 +23,24 @@ void XteinkDisplay::setup() {
   }
 }
 bool XteinkDisplay::set_rendering_mode(int mode) {
-  if (mode < 0 || mode > 2) return false;
-  requested_mode_ = mode;
-  if (mode) {
+  if (mode < 0 || mode > TunedBwMode) return false;
+  if (mode == 1 || mode == 2) {
     ESP_LOGW(TAG,
              "Mode %d awaits measured palette and validated hold; B/W preview "
              "remains active",
              mode);
     return false;
   }
+  if (mode == TunedBwMode && BoardConfig::ACTIVE.displayController != BoardConfig::DisplayController::UC8279)
+    return false;
+  if (requested_mode_ == mode) return true;
+  requested_mode_ = mode;
   force_full_ = true;
+  dirty_ = true;
   return true;
 }
 void XteinkDisplay::draw_absolute_pixel_internal(int x, int y, Color color) {
-  if (calibration_active_ || frozen_ || pending_ || x < 0 || y < 0 ||
+  if (calibration_active_ || frozen_ || pending_ || tuned_state_ == TunedState::Held || x < 0 || y < 0 ||
       x >= get_width_internal() || y >= get_height_internal())
     return;
   auto& epd = parent_->display();
@@ -65,7 +72,7 @@ void XteinkDisplay::draw_pixels_at(int x, int y, int w, int h, const uint8_t* p,
   rgb_ = false;
 }
 void XteinkDisplay::update() {
-  if (calibration_active_ || frozen_ || pending_) return;
+  if (calibration_active_ || frozen_ || pending_ || tuned_state_ == TunedState::Held) return;
   auto& epd = parent_->display();
   if (writer_.has_value()) {
     if (auto_clear_enabled_) {
@@ -78,6 +85,13 @@ void XteinkDisplay::update() {
     (*writer_)(*this);
   }
   if (virtual_ || !dirty_) return;
+  if (requested_mode_ == TunedBwMode && ready_) {
+    dirty_ = false;
+    if (!force_full_ && has_frame_ &&
+        !std::memcmp(frames_.displayed.data(), frames_.target.data(), ::x4render::Pixels)) return;
+    if (begin_tuned_bw_()) force_full_ = false;
+    return;
+  }
   if (ready_) {
     ::x4render::Settings s;
     if (!frames_.plan(s)) return;
@@ -118,6 +132,14 @@ void XteinkDisplay::update() {
   }
 }
 bool XteinkDisplay::finish_normal_(bool wait) {
+  if (tuned_state_ != TunedState::Idle) {
+    while (tuned_state_ != TunedState::Held && !poll_tuned_bw_()) {
+      if (!wait) return false;
+      App.feed_wdt();
+      delay(1);
+    }
+    return tuned_state_ == TunedState::Idle;
+  }
   if (!pending_) return true;
   auto& epd = parent_->display();
   if (!wait && epd.refreshBusy()) return false;
@@ -133,13 +155,7 @@ bool XteinkDisplay::finish_normal_(bool wait) {
   if (!calibration_active_) disable_loop();
   return true;
 }
-bool XteinkDisplay::begin_calibration() {
-  if (calibration_active_) return !exit_requested_;
-  if (BoardConfig::ACTIVE.displayController !=
-          BoardConfig::DisplayController::UC8279 ||
-      get_width_internal() != 800 || get_height_internal() != 480)
-    return false;
-  finish_normal_(true);
+bool XteinkDisplay::acquire_controller_() {
   auto* bus = parent_->display().beginControllerSession();
   if (!bus) return false;
   if (!transport_) {
@@ -154,6 +170,87 @@ bool XteinkDisplay::begin_calibration() {
   transport_->reset();
   factory_error_ = nullptr;
   lab_->invalidate();
+  return true;
+}
+bool XteinkDisplay::begin_tuned_bw_() {
+  const auto snapshot = freeink::getXteinkPanelMtpSnapshot();
+  const int temp = snapshot.temperatureC != -128 ? snapshot.temperatureC : 30;
+  const auto profile = freeink::observedX4FactoryProfile(
+      snapshot.data, snapshot.size, snapshot.verified,
+      freeink::getXteinkDisplayProbeDiag().ver[2], temp);
+  ::x4render::LutBank rows;
+  if (!profile.power.valid || !::x4render::tuneFactoryBw(profile.rows, TunedBoilerWaveform, rows)) {
+    factory_error_ = "Tuned boiler factory table unavailable";
+    return false;
+  }
+  if (!frames_.beginAbsoluteBw()) return false;
+  if (!acquire_controller_()) {
+    frames_.fail();
+    factory_error_ = "Tuned boiler could not acquire controller";
+    return false;
+  }
+  transport_->setPanelPower(profile.power, 2);
+  transport_->setCalibrationTemperature(temp);
+  lab_->factoryDerivedBw = rows;
+  lab_->otpBwEstimate.reset();
+  lab_->bwPreparation = {};
+  lab_->bwPreparation.programmable = true;
+  lab_->boilerLuma = frames_.target.data();
+  lab_->bwTexture = ::x4render::BwTexture::Repair;
+  lab_->repairStrength = 30;
+  lab_->bwBudget = 160;
+  lab_->bwLocalBudget = 40;
+  lab_->burstHeadroom = 80;
+  lab_->bwSplitGuard = true;
+  lab_->holdRail = 0;
+  lab_->parameters = {{{2, 2, 3, 1, 1}, {2, 3, 3, 1, 1}, {2, 4, 3, 1, 1}}};
+  tuned_completed_ = lab_->startImage(millis(), ::x4render::TestImage::BwBoiler);
+  tuned_state_ = TunedState::Driving;
+  pending_ = true;
+  enable_loop();
+  return true;
+}
+bool XteinkDisplay::poll_tuned_bw_() {
+  using Status = freeink::Uc8279X4Transport::Status;
+  if (tuned_state_ == TunedState::Driving) {
+    if (lab_->busy() && !lab_->poll(millis())) return false;
+    tuned_completed_ = tuned_completed_ && std::strcmp(lab_->result(), "complete") == 0;
+    // Power-off is a separate transaction. Keep the useful render result.
+    factory_error_ = tuned_completed_ ? nullptr : lab_->result();
+    if (transport_->status() != Status::Off && transport_->powerOff(millis())) {
+      tuned_state_ = TunedState::PoweringOff;
+      return false;
+    }
+  } else if (transport_->poll(millis()) == freeink::Uc8279X4Transport::Result::Pending) {
+    return false;
+  }
+  if (transport_->status() != Status::Off) {
+    tuned_state_ = TunedState::Held;
+    factory_error_ = "Tuned boiler power-off unconfirmed";
+    frames_.fail();
+    pending_ = false;
+    has_frame_ = false;
+    disable_loop();
+    ESP_LOGE(TAG, "%s", factory_error_);
+    return true;
+  }
+  parent_->display().endControllerSession();
+  if (frames_.prepared(tuned_completed_) && frames_.commit()) {
+    has_frame_ = true;
+    update_count++;
+  } else {
+    has_frame_ = false;
+  }
+  pending_ = false;
+  tuned_state_ = TunedState::Idle;
+  disable_loop();
+  return true;
+}
+bool XteinkDisplay::begin_calibration() {
+  if (calibration_active_) return !exit_requested_;
+  if (BoardConfig::ACTIVE.displayController != BoardConfig::DisplayController::UC8279 ||
+      get_width_internal() != 800 || get_height_internal() != 480 ||
+      !finish_normal_(true) || !acquire_controller_()) return false;
   calibration_active_ = true;
   exit_requested_ = false;
   exit_shutdown_attempted_ = exit_failed_ = false;
@@ -221,7 +318,10 @@ bool XteinkDisplay::configure_lab_() {
   lab_->columnGrain = bw_column_grain_;
   lab_->burstHeadroom = bw_burst_headroom_;
   lab_->bwLocalBudget = bw_local_budget_;
+  lab_->bwBudget = bw_rail_budget_;
+  lab_->grayColumns = gray_columns_;
   lab_->bwSplitGuard = bw_split_guard_;
+  lab_->grayZoneGuard = bw_split_guard_;
   lab_->verticalWindowValidated = vertical_window_;
   lab_->croppedUploadValidated = cropped_upload_;
   return true;
@@ -278,14 +378,18 @@ std::string XteinkDisplay::calibration_image() const {
                          "landscape dither", "landscape gray", "neighbor sweep", "linear ramp",
                          "ramp base only", "ramp inverse only", "load stripes",
                          "load checkerboard"};
-  char value[80];
+  char value[112];
   std::snprintf(value, sizeof(value), "%s; seed %08lX", names[uint8_t(lab_->image())],
                 (unsigned long)lab_->imageSeed());
-  return value;
+  std::string result = value;
+  if (::x4render::grayPreparationImage(lab_->image())) {
+    if (lab_->grayColumns) result += "; column dither";
+    if (lab_->zonePlan().count > 1) result += "; " + std::to_string(lab_->zonePlan().count) + " base zones";
+  }
+  return result;
 }
 std::string XteinkDisplay::calibration_bw_load() const {
-  if (!lab_ || (!::x4render::usesBwTexture(lab_->image()) && lab_->image() != ::x4render::TestImage::LoadStrip))
-    return "No B/W texture or strip test";
+  if (!lab_ || !::x4render::measuresBwImage(lab_->image())) return "No B/W preparation measured";
   const auto before = lab_->requestedBwLoad(), after = lab_->renderedBwLoad();
   char value[120];
   std::snprintf(value, sizeof(value), "Peak/rail %u to %u; 128 cols %u to %u; recent %u to %u",
@@ -451,7 +555,12 @@ void XteinkDisplay::log_panel_mtp() {
   });
 }
 const char* XteinkDisplay::calibration_pipeline() const {
-  if (!calibration_active_ || !lab_) return "boiler_bw_preview";
+  if (!calibration_active_ || !lab_) {
+    if (tuned_state_ == TunedState::Held) return "boiler_tuned_power_off_unconfirmed";
+    if (tuned_state_ == TunedState::Driving) return "boiler_tuned_bw_driving";
+    if (tuned_state_ == TunedState::PoweringOff) return "boiler_tuned_power_off";
+    return requested_mode_ == TunedBwMode ? "boiler_tuned_bw" : "boiler_bw_preview";
+  }
   if (exit_failed_) return "release_failed_power_off_unconfirmed";
   using J = ::x4render::Calibration<freeink::Uc8279X4Transport>::Job;
   switch (lab_->job()) {
@@ -576,17 +685,15 @@ std::string XteinkDisplay::calibration_order() const {
 }
 bool XteinkDisplay::flush_for_deep_sleep() {
   if (calibration_active_ || virtual_) return false;
-  finish_normal_(true);
+  if (!finish_normal_(true)) return false;
   update();
-  finish_normal_(true);
-  freeze_for_deep_sleep();
-  return has_frame_;
+  if (!finish_normal_(true)) return false;
+  return freeze_for_deep_sleep() && has_frame_;
 }
-void XteinkDisplay::freeze_for_deep_sleep() {
-  if (!calibration_active_) {
-    finish_normal_(true);
-    frozen_ = true;
-  }
+bool XteinkDisplay::freeze_for_deep_sleep() {
+  if (calibration_active_) return false;
+  frozen_ = finish_normal_(true);
+  return frozen_;
 }
 void XteinkDisplay::dump_config() {
   LOG_DISPLAY("", "Xteink display", this);

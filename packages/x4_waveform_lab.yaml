@@ -402,7 +402,7 @@ select:
     entity_category: diagnostic
     optimistic: true
     restore_value: false
-    initial_option: "Bayer"
+    initial_option: "Row Repair"
     options:
       - "Bayer"
       - "Column Stable"
@@ -436,15 +436,29 @@ select:
     device_id: lab_session
     entity_category: diagnostic
     optimistic: true
-    initial_option: "B-W Dither"
+    initial_option: "B-W Tuned"
     options:
+      - "B-W Tuned"
       - "B-W Dither"
       - "Single Settle - Awaiting Calibration"
       - "Dither Then Settle - Awaiting Calibration"
-    set_action:
+    on_value:
       - lambda: |-
-          const int mode = x == "B-W Dither" ? 0 : x == "Single Settle - Awaiting Calibration" ? 1 : 2;
+          const int mode = x == "B-W Tuned" ? 3 : x == "B-W Dither" ? 0 :
+                           x == "Single Settle - Awaiting Calibration" ? 1 : 2;
           id(x4_display).set_rendering_mode(mode);
+  - platform: template
+    name: "Gray Dither"
+    device_id: lab_gray
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: false
+    initial_option: "Column Stable"
+    options:
+      - "Column Stable"
+      - "Bayer"
+    on_value:
+      - lambda: id(x4_display).set_gray_columns(x == "Column Stable");
   - platform: template
     name: "B/W Drive"
     device_id: lab_bw
@@ -696,7 +710,7 @@ number:
     mode: box
     optimistic: true
     restore_value: false
-    initial_value: 0
+    initial_value: 10
     set_action:
       - lambda: id(x4_display).set_bw_column_grain(uint8_t(x));
 
@@ -710,7 +724,7 @@ number:
     mode: box
     optimistic: true
     restore_value: false
-    initial_value: 0
+    initial_value: 80
     set_action:
       - lambda: id(x4_display).set_bw_burst_headroom(uint8_t(x));
 
@@ -725,7 +739,7 @@ number:
     mode: box
     optimistic: true
     restore_value: false
-    initial_value: 100
+    initial_value: 70
     set_action:
       - lambda: id(x4_display).set_bw_column_strength(uint8_t(x));
 
@@ -740,7 +754,7 @@ number:
     mode: box
     optimistic: true
     restore_value: false
-    initial_value: 100
+    initial_value: 30
     set_action:
       - lambda: id(x4_display).set_bw_repair_strength(uint8_t(x));
 
@@ -768,7 +782,9 @@ number:
     mode: box
     optimistic: true
     restore_value: false
-    initial_value: 80
+    initial_value: 160
+    set_action:
+      - lambda: id(x4_display).set_bw_rail_budget(uint16_t(x));
 
   - platform: template
     name: "A Frames"
