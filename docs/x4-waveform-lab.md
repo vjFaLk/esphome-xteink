@@ -26,6 +26,14 @@ Bayer. Start at 30% and compare against Bayer at the same budget. Higher
 strength can further lower switching while making the texture more visible.
 **Split if Needed** still applies to the repaired B/W pattern.
 
+**Test Patterns → After Zones** applies to masked B/W diagnostic refreshes
+with two or more passes. **Off** advances as usual. **Idle Wait** waits for
+the approximate duration of one drive pass with no activation. **Panel Hold**
+runs one full-panel pass with the same VCOM-aligned hold selector used outside
+each zone, before gray settle if the image has one. Start with Ramp Base and
+keep its texture, budget and waveform fixed while comparing the three choices.
+The experiment defaults to Off and applies only in the diagnostic lab.
+
 Capture **Gray Tuning → Neighbor Mixes** with exposure and lighting locked.
 It shows the eight raw references and seven adjacent-pair rows with 17
 coverage steps each. Capture **Linear Ramp** without changing the exposure,
