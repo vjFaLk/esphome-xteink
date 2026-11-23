@@ -25,6 +25,10 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_grayscale_settle_time(uint32_t) {}
   void set_grayscale_windowed_upload(bool) {}
   bool set_rendering_mode(int mode);
+  void set_grayscale_update_margin(uint8_t pixels) {
+    grayscale_update_margin_ = std::min<uint8_t>(pixels, 2);
+  }
+  uint8_t get_grayscale_update_margin() const { return grayscale_update_margin_; }
   void refresh_rendering_mode();
   bool set_render_demo(bool enabled);
   void set_render_demo_marker(bool enabled);
@@ -199,6 +203,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   const char* gray_result_{"idle"};
   uint32_t gray_started_{0}, gray_duration_{0}, gray_bytes_{0};
   uint8_t last_test_image_{3};
+  uint8_t grayscale_update_margin_{0};
   uint8_t panel_power_setup_{2}, bw_mode_{2};
   ::x4render::BwTexture bw_texture_{::x4render::BwTexture::Bayer};
   uint8_t bw_column_strength_{100}, bw_repair_strength_{100};

@@ -42,6 +42,7 @@ CONF_GRAYSCALE = "grayscale"
 CONF_GRAYSCALE_STRATEGY = "grayscale_strategy"
 CONF_GRAYSCALE_SETTLE_TIME = "grayscale_settle_time"
 CONF_GRAYSCALE_WINDOWED_UPLOAD = "grayscale_windowed_upload"
+CONF_GRAYSCALE_UPDATE_MARGIN = "grayscale_update_margin"
 
 REFRESH_MODES = {
     "full": 0,
@@ -71,6 +72,7 @@ CONFIG_SCHEMA = display.FULL_DISPLAY_SCHEMA.extend(
             cv.positive_time_period_milliseconds
         ),
         cv.Optional(CONF_GRAYSCALE_WINDOWED_UPLOAD, default=False): cv.boolean,
+        cv.Optional(CONF_GRAYSCALE_UPDATE_MARGIN, default=0): cv.int_range(min=0, max=2),
         cv.Optional(CONF_DITHER_LUMINANCE): cv.All(
             cv.ensure_list(cv.int_range(min=0, max=254)), cv.Length(min=6, max=6), _luminances
         ),
@@ -120,6 +122,7 @@ async def to_code(config):
     cg.add(var.set_full_refresh_every(config[CONF_FULL_REFRESH_EVERY]))
     cg.add(var.set_grayscale(config[CONF_GRAYSCALE]))
     cg.add(var.set_grayscale_windowed_upload(config[CONF_GRAYSCALE_WINDOWED_UPLOAD]))
+    cg.add(var.set_grayscale_update_margin(config[CONF_GRAYSCALE_UPDATE_MARGIN]))
     cg.add(
         var.set_grayscale_strategy(
             config.get(CONF_GRAYSCALE_STRATEGY, GRAYSCALE_STRATEGIES["native"])

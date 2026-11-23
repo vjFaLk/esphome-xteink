@@ -223,6 +223,7 @@ bool XteinkDisplay::begin_gray_(bool force) {
   using namespace ::x4render;
   Settings settings;
   settings.mode = requested_mode_ == 1 ? Mode::SingleSettle : Mode::DitherSettle;
+  settings.margin = grayscale_update_margin_;
   const bool relative = settings.mode == Mode::DitherSettle;
   factory_error_ = nullptr;
   settings.palette = relative ? diagnostic_palette_() : measuredStablePalette(stable_luminance_);

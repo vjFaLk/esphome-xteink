@@ -18,6 +18,10 @@ esphome:
 xteink:
   capture_panel_mtp: true
 
+display:
+  - id: !extend x4_display
+    grayscale_update_margin: 1
+
 switch:
   - platform: template
     name: "Landscape Demo"
@@ -785,6 +789,20 @@ text_sensor:
     lambda: return {id(x4_display).calibration_assignments()};
 
 number:
+  - platform: template
+    name: "Update Margin"
+    device_id: lab_session
+    entity_category: diagnostic
+    unit_of_measurement: "px"
+    min_value: 0
+    max_value: 2
+    step: 1
+    mode: slider
+    lambda: return id(x4_display).get_grayscale_update_margin();
+    update_interval: 1s
+    set_action:
+      - lambda: id(x4_display).set_grayscale_update_margin(uint8_t(x));
+
   - platform: template
     name: "G1 Frames"
     device_id: lab_stable_gray
