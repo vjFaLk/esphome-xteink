@@ -216,7 +216,7 @@ bool XteinkDisplay::configure_lab_() {
 }
 bool XteinkDisplay::show_calibration_image(uint8_t image, uint32_t seed) {
   if (!calibration_active_ || lab_->busy() || exit_requested_ ||
-      image < 1 || image > uint8_t(::x4render::TestImage::RampInverse)) return false;
+      image < 1 || image > uint8_t(::x4render::TestImage::LoadCheckerboard)) return false;
   if (!configure_lab_()) return false;
   if (!lab_->startImage(millis(), ::x4render::TestImage(image), seed)) return false;
   last_test_image_ = image;
@@ -230,7 +230,8 @@ std::string XteinkDisplay::calibration_image() const {
   if (!lab_) return "none";
   const char* names[] = {"calibration", "white", "black", "known reference", "random edges",
                          "landscape dither", "landscape gray", "neighbor sweep", "linear ramp",
-                         "ramp base only", "ramp inverse only"};
+                         "ramp base only", "ramp inverse only", "load stripes",
+                         "load checkerboard"};
   char value[80];
   std::snprintf(value, sizeof(value), "%s; seed %08lX", names[uint8_t(lab_->image())],
                 (unsigned long)lab_->imageSeed());
