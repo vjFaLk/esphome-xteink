@@ -31,8 +31,8 @@ and retry; unresolved power-state failures require hardware recovery.
 Full B/W external-LUT preparation and OTP now share CDI=97, PLL=0E, E1=02,
 E0=02, E5=1E, geometry and full-screen activation. Their LUT source selection
 necessarily differs. Candidate AA retains CDI=D7 and now explicitly uses E0=02,
-E5=1E rather than inheriting mode history. PWR/VDCS/BTST are not guessed from
-another panel; the path continues to use this module's programmed defaults.
+E5=1E rather than inheriting mode history. With Legacy Setup, PWR/VDCS/BTST use the controller defaults. The optional
+explicit power setup is described below.
 
 ## Modes and recipe
 
@@ -195,8 +195,8 @@ refresh, distinct from the inversion phases inside the programmable LUT. It can
 change physical conditioning as well as controller configuration, so success
 with priming alone does not prove an analog-register cause.
 
-**Show Dithered Landscape** renders the preserved grayscale photograph through
-the B/W ordered quantizer. **Show Grayscale Landscape** adds the current A/B/C
+**Dither Photo** renders the preserved grayscale photograph through
+the B/W ordered quantizer. **Gray Photo** adds the current A/B/C
 candidate doses using eight provisional input buckets, three from black and
 three from white plus the endpoints. Its title labels the tones unmeasured.
 This is an experimental photo target, not a calibrated palette or enabled
@@ -262,8 +262,7 @@ independent controls; priming can hide whether the explicit setup fixed cold sta
 
 For a useful comparison:
 
-1. Keep the current B/W timing and conditioning controls fixed. Set **Factory
-   Prime On Cold Start OFF**.
+1. Keep the current B/W timing and conditioning controls fixed. Set **Factory Prime** off.
 2. Select **Panel Power - Experimental**. Exit calibration, wait for exit to
    finish, and enter it again. This resets the controller and removes the warm
    factory state. Verify Applied Power after the next operation.
