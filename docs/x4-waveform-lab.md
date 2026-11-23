@@ -17,6 +17,15 @@ which keeps the duty steps and reduces alternation between scan rows.
 send the prepared B/W bitmap in up to three passes. Every pixel retains its
 original B/W starting color and matching gray settle selector.
 
+**Row Repair** starts from Bayer and uses **Test Patterns → Repair Strength**,
+**Rail Budget**, and **Burst Headroom**. It removes scan transitions in pairs
+within short spans. Each pair exchanges the placement of the same two shades
+and updates the settle selectors accordingly. Raw patches, pure endpoints,
+and each Neighbor Mixes swatch's coverage are preserved. Strength 0% is
+Bayer. Start at 30% and compare against Bayer at the same budget. Higher
+strength can further lower switching while making the texture more visible.
+**Split if Needed** still applies to the repaired B/W pattern.
+
 Capture **Gray Tuning → Neighbor Mixes** with exposure and lighting locked.
 It shows the eight raw references and seven adjacent-pair rows with 17
 coverage steps each. Capture **Linear Ramp** without changing the exposure,
