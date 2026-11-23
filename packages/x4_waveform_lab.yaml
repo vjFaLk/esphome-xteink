@@ -393,6 +393,8 @@ select:
       - "Distributed"
       - "1 On / 1 Off"
       - "8 On / 8 Off"
+      - "Jittered"
+      - "Staggered"
 
   - platform: template
     name: "B/W Texture"

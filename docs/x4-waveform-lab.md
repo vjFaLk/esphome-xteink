@@ -1,5 +1,34 @@
 # X4 waveform lab
 
+## Testing randomized switch timing (v17)
+
+The user reported better inversion with **1 On / 1 Off** than **8 On /
+8 Off**, a small improvement with **Distributed** over **Centered**, and
+a high-pitched crackle repeating at roughly 10–15 Hz during weak drive.
+Good drive produced steady high-pitched noise. The crackle rate is an
+estimated repetition rate and the supply cause is still open.
+
+**Strip Pattern** adds two repeatable randomized stimuli for **Load Strip**.
+Keep Strip Width, B/W Drive, and the starting image fixed.
+
+- **Jittered** shuffles whether the full strip switches on the first or
+  second row transition of each pair. It matches **1 On / 1 Off** in peak
+  count and estimated total charge and allows runs of up to two active
+  rows. This tests the effect of breaking the regular row cadence.
+- **Staggered** randomly schedules two of the four B/W column pairs in each
+  byte early, with the other two switching on the next row. It spreads the
+  same total charge over every row transition. A few evenly spaced rows
+  get one additional pair to match the exact total over 479 transitions.
+  At width 320 the peak is 81 switches per rail. Both probes keep the
+  original 400/400 black and white counts and the full-height references.
+
+Compare **1 On / 1 Off → Jittered → Staggered**. Clear white and wait before
+each image. Compare inversion and whether the crackle occurs. Jittered and
+Staggered use a fixed seed and the same bitmap repeats on each waveform
+frame. Their source-charge estimates can be compared with the existing
+probes before using the result to change the renderer.
+
+
 ## Adjusting texture strength and probing load (v16)
 
 **Bayer** is the unchanged 4×4 ordered-dither control. Around middle gray

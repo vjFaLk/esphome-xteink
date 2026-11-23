@@ -243,7 +243,8 @@ bool XteinkDisplay::repeat_calibration_image() {
 std::string XteinkDisplay::calibration_image() const {
   if (!lab_) return "none";
   if (lab_->image() == ::x4render::TestImage::LoadStrip) {
-    const char* pattern[] = {"", "; distributed", "; 1 on / 1 off", "; 8 on / 8 off"};
+    const char* pattern[] = {"", "; distributed", "; 1 on / 1 off", "; 8 on / 8 off",
+                             "; jittered", "; staggered"};
     return "load strip; " + std::to_string(lab_->stripWidth()) + " switching columns" +
            pattern[uint8_t(lab_->loadPattern())];
   }
