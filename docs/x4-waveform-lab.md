@@ -1,4 +1,59 @@
-# X4 waveform lab: conditioned B/W and starting-image tests
+# X4 waveform lab
+
+## Factory replay and mottling experiments (v8)
+
+**B/W Setup → B/W Drive** defaults to **Factory Replay**. It loads five 49-byte
+rows from the selected factory table in the panel's verified boot-time MTP
+capture. **Factory OTP** invokes the controller's built-in waveform for an
+optical comparison. **Factory Tuned** starts with those same bytes and applies
+the controls below. The prior simple and conditioned recipes are no longer
+selectable in the lab. The default uses the tested Panel Power And Clock setup
+and leaves Factory Prime off.
+
+The five supported full B/W tables end at 5, 10, 15, 20 and 80 °C. They share
+analogue and clock codes but have different pulse lengths. Their two source
+groups use opposite endpoint drive, a four-frame code-0 pause, then the target
+with staggered completion. At 21–80 °C the inverse is 25 frames, then pause 4,
+then white drives 25 and rests 11 while black drives 14, rests 11 and drives
+the final 11. Both endpoints have equal counts in the two opposing source
+codes. The firmware checks the expected shape and rejects unsupported tables.
+
+**Temp Source → Boot Sample** uses the controller's experimental TSC reading
+captured at boot. **Factory Table** displays the selected temperature and bin
+alongside the raw TSC bytes. If the reading fails the plausibility check, it
+shows **Fallback 30 C**. **Manual** uses **Manual Temp** for a measured
+temperature or controlled A/B and works without reboot. The boot sample is
+not a live temperature feed. The custom gray pulses still require their own
+temperature validation.
+
+**Factory Tuned** controls:
+
+- **Shake Frames** sets each dark and light pulse length. **Shake Cycles**
+  sets the number of pairs. Either at zero skips agitation.
+- **White Ref.** adds a common dark pulse and equally long common white pulse
+  immediately before the factory sequence. It ends at white and adds equal
+  positive/negative source-code counts, avoiding the prior white-only dose.
+  Equal code counts do not certify physical charge balance. Zero skips it.
+- **Drive Trim** adds frames to both inversion and the first target phase.
+  It tests whether a longer drive improves endpoint definition without
+  changing the short final phase or the balance in opposing code counts.
+- **Rest Trim** changes the four-frame post-inversion pause. Zero leaves it
+  at four. It tests whether resting longer reduces texture or ghosting.
+- **Pause (ms)** remains the host wait between B/W completion and gray. It
+  does not alter the B/W waveform.
+
+Start with **Known Image**, **Clear White**, and **Clear Black** under Factory
+Replay. Compare Factory OTP at the same temperature. For mottling, switch to
+Factory Tuned, leave both trims at zero, and compare shake alone (2 frames ×
+2 cycles), White Ref. alone (start with 6 frames), and both together. Keep
+temperature selection and images fixed. Once the white background is reliable,
+rebuild the gray chart and record fresh readings rather than importing old
+shade measurements.
+
+## Earlier calibration rounds (v4–v7)
+
+The controls below document the earlier comparisons. Use the v8 names and defaults above for current tests.
+
 
 This round isolates controller ownership/setup from B/W waveform experiments.
 Optical improvement and the reported re-entry failure still need physical
