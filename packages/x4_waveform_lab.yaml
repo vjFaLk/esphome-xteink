@@ -258,9 +258,7 @@ button:
       - switch.turn_on: waveform_lab
       - script.wait: waveform_take_control
       - lambda: |-
-          const auto &pattern = id(lab_strip_pattern).state;
-          const uint32_t code = pattern == "Distributed" ? 1 : pattern == "1 On / 1 Off" ? 2 :
-                                pattern == "8 On / 8 Off" ? 3 : 0;
+          const uint32_t code = id(lab_strip_pattern).active_index().value_or(0);
           id(x4_display).show_calibration_image(
               uint8_t(::x4render::TestImage::LoadStrip), (code << 16) | uint32_t(id(lab_strip_width).state));
 
