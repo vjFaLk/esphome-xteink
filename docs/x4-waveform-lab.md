@@ -7,6 +7,37 @@ The [measured profile package](../packages/x4_pro_relative_profile_example.yaml)
 records the approved eight-shade profile and capture settings for one panel.
 The versioned sections below retain the development observations.
 
+## Rendering with the calibrated profiles
+
+The **Calibration → Render Mode** selector offers **B-W Tuned**,
+**B-W Dither**, **Single Settle**, and **Dither Then Settle**. The grayscale
+modes use the verified factory temperature table with the tuned boiler
+B/W recipe. They use full-width activation and a hold selector outside
+the exact pixel mask. Mode and page changes rebuild the requested frame.
+
+**Single Settle** uses five physical tones. Supply `stable_gray_frames`
+and `stable_gray_luminance` in G1–G3 order to enable it. The
+[stable profile example](../packages/x4_pro_stable_profile_example.yaml)
+records the selected 3/5/7 frame doses. The initial input levels of
+64/128/192 determine quantization boundaries. Replace them with measured
+relative luminance when available. The B/W pass drives changed endpoints.
+Each changed gray pixel gets the factory black reset and its lightening
+pulse in one LUT activation.
+
+**Dither Then Settle** uses the measured relative palette and pair curves.
+It prepares each affected pixel at its selected black or white endpoint,
+then applies the relative gray pulse. Connected gray areas from the old
+and new frames are included together. When preparation is zoned, a
+panel-wide hold pass follows it before settling. The settle pass uses
+the same lanes when its own load also fits the whole display.
+
+Turn off **Calibration** before comparing the renderer modes. Try the boiler
+pages or enable **Landscape Demo** to send the same photo and swatches
+through the normal renderer. **Demo Marker** toggles a gray 22 × 21 patch crossing
+x752. Use it to inspect the column and compare the unchanged gray area across
+repeated updates. The sensors report the mask, activation window, pass
+counts, transfer size, and duration.
+
 ## Boiler preset and optical gray calibration (v19)
 
 **B-W Tuned** is the boiler's default Render Mode. It uses the boot
@@ -753,7 +784,7 @@ lightening pulse in the same LUT. VCOM and non-target pixels follow the
 same timing with hold selected. The additional gray pulse has no
 opposite prefix. The existing factory inversion remains in the reset.
 
-**G1/G2/G3 Frames** set lightening dose independently (initially 3/7/12).
+**G1/G2/G3 Frames** set lightening dose independently (initially 3/5/7).
 Larger values are expected to lighten the shade. Rebuild after changing
 a count. **Repeat** applies the same banks to the same pixels. **Rotate**
 cycles the candidates through the columns and takes their previous grays
