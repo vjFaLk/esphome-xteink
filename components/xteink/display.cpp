@@ -191,6 +191,7 @@ bool XteinkDisplay::configure_lab_() {
       snapshot.data, snapshot.size, snapshot.verified,
       freeink::getXteinkDisplayProbeDiag().ver[2], temp);
   lab_->factoryDerivedBw.reset();
+  lab_->otpBwEstimate.reset();
   if (bw_mode_) {
     ::x4render::LutBank rows;
     const auto tuning = bw_mode_ == 2 ? bw_tuning_ : ::x4render::FactoryBwTuning{};
@@ -200,6 +201,9 @@ bool XteinkDisplay::configure_lab_() {
       return false;
     }
     lab_->factoryDerivedBw = rows;
+  } else if (profile.power.valid) {
+    ::x4render::LutBank rows;
+    if (::x4render::tuneFactoryBw(profile.rows, {}, rows)) lab_->otpBwEstimate = rows;
   }
   transport_->setPanelPower(profile.power, panel_power_setup_);
   transport_->setCalibrationTemperature(temp);
@@ -212,6 +216,8 @@ bool XteinkDisplay::configure_lab_() {
   lab_->bwPreparation.programmable = bw_mode_ != 0;
   lab_->boilerLuma = ready_ && has_frame_ ? frames_.displayed.data() : nullptr;
   lab_->bwTexture = bw_texture_;
+  lab_->columnStrength = bw_column_strength_;
+  lab_->repairStrength = bw_repair_strength_;
   lab_->bwSplitGuard = bw_split_guard_;
   lab_->verticalWindowValidated = vertical_window_;
   lab_->croppedUploadValidated = cropped_upload_;
@@ -236,8 +242,11 @@ bool XteinkDisplay::repeat_calibration_image() {
 }
 std::string XteinkDisplay::calibration_image() const {
   if (!lab_) return "none";
-  if (lab_->image() == ::x4render::TestImage::LoadStrip)
-    return "load strip; " + std::to_string(lab_->stripWidth()) + " switching columns";
+  if (lab_->image() == ::x4render::TestImage::LoadStrip) {
+    const char* pattern[] = {"", "; distributed", "; 1 on / 1 off", "; 8 on / 8 off"};
+    return "load strip; " + std::to_string(lab_->stripWidth()) + " switching columns" +
+           pattern[uint8_t(lab_->loadPattern())];
+  }
   if (lab_->image() == ::x4render::TestImage::SplitCheckerboard)
     return "split checkerboard; " + std::to_string(lab_->imageSeed()) + " per rail; " +
            std::to_string(lab_->stripCount()) + " strips";
@@ -248,6 +257,8 @@ std::string XteinkDisplay::calibration_image() const {
                         lab_->image() == T::BwChecker ? "B/W checker" : "B/W boiler";
     const auto mode = lab_->renderedBwTexture();
     value += mode == M::Columns ? "; column stable" : mode == M::Repair ? "; row repair" : "; Bayer";
+    if (mode != M::Bayer && lab_->bwStrength() < 100)
+      value += " " + std::to_string(lab_->bwStrength()) + "%";
     if (lab_->protectedFallback()) value += " (protected edges)";
     if (lab_->stripCount()) value += "; " + std::to_string(lab_->stripCount()) + " strips";
     return value;
@@ -262,12 +273,24 @@ std::string XteinkDisplay::calibration_image() const {
   return value;
 }
 std::string XteinkDisplay::calibration_bw_load() const {
-  if (!lab_ || !::x4render::usesBwTexture(lab_->image())) return "No B/W texture test";
+  if (!lab_ || (!::x4render::usesBwTexture(lab_->image()) && lab_->image() != ::x4render::TestImage::LoadStrip))
+    return "No B/W texture or strip test";
   const auto before = lab_->requestedBwLoad(), after = lab_->renderedBwLoad();
   char value[120];
   std::snprintf(value, sizeof(value), "Peak/rail %u to %u; 128 cols %u to %u; recent %u to %u",
                 unsigned(before.peak), unsigned(after.peak), unsigned(before.localPeak),
                 unsigned(after.localPeak), unsigned(before.recentPeak), unsigned(after.recentPeak));
+  return value;
+}
+std::string XteinkDisplay::calibration_bw_charge() const {
+  if (!lab_) return "No modeled B/W pass";
+  const auto q = lab_->bwCharge();
+  if (!q.frames) return "No modeled B/W pass";
+  char value[180];
+  std::snprintf(value, sizeof(value), "Half-steps/rail | both %u, one %u, boundary %u; local 8/32 %u/%u; dark %llu, light %llu total",
+                unsigned(q.both), unsigned(q.one), unsigned(q.boundary), unsigned(q.recent),
+                unsigned(q.sustained), static_cast<unsigned long long>(q.total[0]),
+                static_cast<unsigned long long>(q.total[1]));
   return value;
 }
 void XteinkDisplay::end_calibration() {

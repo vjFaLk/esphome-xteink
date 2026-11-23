@@ -258,8 +258,11 @@ button:
       - switch.turn_on: waveform_lab
       - script.wait: waveform_take_control
       - lambda: |-
+          const auto &pattern = id(lab_strip_pattern).state;
+          const uint32_t code = pattern == "Distributed" ? 1 : pattern == "1 On / 1 Off" ? 2 :
+                                pattern == "8 On / 8 Off" ? 3 : 0;
           id(x4_display).show_calibration_image(
-              uint8_t(::x4render::TestImage::LoadStrip), uint32_t(id(lab_strip_width).state));
+              uint8_t(::x4render::TestImage::LoadStrip), (code << 16) | uint32_t(id(lab_strip_width).state));
 
   - platform: template
     name: "Split Checkerboard"
@@ -380,6 +383,20 @@ script:
 
 select:
   - platform: template
+    id: lab_strip_pattern
+    name: "Strip Pattern"
+    device_id: lab_images
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: false
+    initial_option: "Centered"
+    options:
+      - "Centered"
+      - "Distributed"
+      - "1 On / 1 Off"
+      - "8 On / 8 Off"
+
+  - platform: template
     name: "B/W Texture"
     device_id: lab_images
     entity_category: diagnostic
@@ -491,6 +508,13 @@ text_sensor:
     entity_category: diagnostic
     update_interval: 1s
     lambda: return {id(x4_display).calibration_bw_load()};
+
+  - platform: template
+    name: "Source Charge"
+    device_id: lab_images
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: return {id(x4_display).calibration_bw_charge()};
 
   - platform: template
     name: "Factory Table"
@@ -638,6 +662,36 @@ text_sensor:
     lambda: return {id(x4_display).calibration_assignments()};
 
 number:
+  - platform: template
+    name: "Column Strength"
+    device_id: lab_images
+    entity_category: diagnostic
+    min_value: 0
+    max_value: 100
+    step: 5
+    unit_of_measurement: "%"
+    mode: box
+    optimistic: true
+    restore_value: false
+    initial_value: 100
+    set_action:
+      - lambda: id(x4_display).set_bw_column_strength(uint8_t(x));
+
+  - platform: template
+    name: "Repair Strength"
+    device_id: lab_images
+    entity_category: diagnostic
+    min_value: 0
+    max_value: 100
+    step: 5
+    unit_of_measurement: "%"
+    mode: box
+    optimistic: true
+    restore_value: false
+    initial_value: 100
+    set_action:
+      - lambda: id(x4_display).set_bw_repair_strength(uint8_t(x));
+
   - platform: template
     id: lab_strip_width
     name: "Strip Width"

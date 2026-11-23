@@ -1,5 +1,45 @@
 # X4 waveform lab
 
+## Adjusting texture strength and probing load (v16)
+
+**Bayer** is the unchanged 4×4 ordered-dither control. Around middle gray
+it flips the dot pattern between consecutive scan rows. The user observed
+failed drive in this control and successful drive with Column Stable and
+Row Repair with the split guard off.
+
+- **Column Strength** replaces that fraction of dispersed 4×4 cells with
+  column-stable thresholds. 100% is the original Column Stable result.
+  Lower values retain more Bayer texture and can increase switching load.
+- **Repair Strength** removes that fraction of the excess transitions
+  above the local and whole-row repair limits at each step. At 100% it
+  enforces the limits from **Rail Budget**. At lower strength the limits
+  become soft and the rendered frame can exceed them. Both strengths are
+  0–100% and 0% renders the Bayer control bits. The optional split guard
+  still applies to these two modes when on.
+- **Source Charge** weights source arrivals by the phase in the programmed
+  B/W waveform. It counts one unit from modeled midpoint to an active rail
+  and two from the opposite active rail. **Both** and **one** show the
+  highest interior load per rail in dual-rail and single-rail phases.
+  **Boundary** scores entry to or from the padded gates, including phase
+  changes. **Local 8/32** is peak weighted load in 128 columns with an
+  assumed recovery half-life of 8 or 32 scan rows. **Dark/light total** sums
+  the estimated dose from source-line switching across all frames. Split
+  jobs report peaks across the individual passes and totals for all passes.
+  Factory OTP uses the verified table read from the controller and the
+  programmable paths use the selected LUT. These are relative model units.
+  VCOM, pixel charging, converter behavior, and physical bank geometry
+  are outside this source-line estimate.
+
+**Strip Pattern** changes the stimulus used by **Load Strip**. **Centered**
+and **Distributed** keep the same counts per rail on every active row, but
+distribute the latter across the space outside the reference bands. **1 On
+/ 1 Off** and **8 On / 8 Off** both drive the centered columns on half the
+visible row pairs. Their peak and average switching are equal, with
+different burst lengths. Keep Strip Width and the waveform fixed. Compare
+the early inversion and audio at the same position. The synthetic
+recovery scores do not identify a converter or acoustic resonance.
+
+
 ## Comparing B/W textures on the panel (v15)
 
 In **Test Patterns**, select **B/W Texture**, then press **B/W Photo**,

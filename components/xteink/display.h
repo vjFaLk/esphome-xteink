@@ -66,6 +66,8 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_hold_rail(uint8_t value) { hold_rail_ = value; }
   void set_bw_mode(uint8_t mode) { bw_mode_ = mode; }
   void set_bw_texture(::x4render::BwTexture value) { bw_texture_ = value; }
+  void set_bw_column_strength(uint8_t value) { bw_column_strength_ = value; }
+  void set_bw_repair_strength(uint8_t value) { bw_repair_strength_ = value; }
   void set_bw_split_guard(bool value) { bw_split_guard_ = value; }
   void set_bw_activation_frames(uint8_t v) { bw_tuning_.shakeFrames = v; }
   void set_bw_activation_cycles(uint8_t v) { bw_tuning_.shakeCycles = v; }
@@ -81,6 +83,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   bool repeat_calibration_image();
   std::string calibration_image() const;
   std::string calibration_bw_load() const;
+  std::string calibration_bw_charge() const;
   std::string calibration_waveform(uint8_t row, bool hex = false,
                                    bool preparation = false) const;
   std::string calibration_assignments() const;
@@ -155,6 +158,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   uint8_t last_test_image_{3};
   uint8_t panel_power_setup_{2}, bw_mode_{2};
   ::x4render::BwTexture bw_texture_{::x4render::BwTexture::Bayer};
+  uint8_t bw_column_strength_{100}, bw_repair_strength_{100};
   bool bw_split_guard_{true};
   bool temp_override_{false};
   int manual_temp_c_{30};
