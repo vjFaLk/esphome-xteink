@@ -203,6 +203,24 @@ button:
       - script.wait: waveform_take_control
       - lambda: id(x4_display).show_calibration_image(8);
 
+  - platform: template
+    name: "Ramp Base"
+    device_id: lab_gray
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: id(x4_display).show_calibration_image(9);
+
+  - platform: template
+    name: "Ramp Inverse"
+    device_id: lab_gray
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: id(x4_display).show_calibration_image(10);
+
 text:
   - platform: template
     id: lab_shade_sequence
