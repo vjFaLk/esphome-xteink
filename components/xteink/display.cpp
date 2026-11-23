@@ -63,7 +63,8 @@ void XteinkDisplay::schedule_touch_settle_() {
   set_timeout("touch_settle", TouchSettleDelayMs, [this]() {
     touch_phase_ = TouchPhase::Idle;
     dirty_ |= frames_.hasPreview();
-    update();
+    redraw_requested_ = true;
+    enable_loop();
   });
 }
 void XteinkDisplay::refresh_rendering_mode() {
@@ -639,6 +640,7 @@ void XteinkDisplay::loop() {
         redraw_requested_ = false;
         update();
       }
+      if (!pending_) disable_loop();
     }
     return;
   }
