@@ -250,6 +250,17 @@ button:
           id(x4_display).show_calibration_image(
               uint8_t(::x4render::TestImage::LoadStrip), uint32_t(id(lab_strip_width).state));
 
+  - platform: template
+    name: "Split Checkerboard"
+    device_id: lab_images
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: |-
+          id(x4_display).show_calibration_image(
+              uint8_t(::x4render::TestImage::SplitCheckerboard), uint32_t(id(lab_rail_budget).state));
+
 text:
   - platform: template
     id: lab_shade_sequence
@@ -571,6 +582,19 @@ number:
     optimistic: true
     restore_value: false
     initial_value: 320
+
+  - platform: template
+    id: lab_rail_budget
+    name: "Rail Budget"
+    device_id: lab_images
+    entity_category: diagnostic
+    min_value: 32
+    max_value: 160
+    step: 8
+    mode: box
+    optimistic: true
+    restore_value: false
+    initial_value: 80
 
   - platform: template
     name: "A Frames"

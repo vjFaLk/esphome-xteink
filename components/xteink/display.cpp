@@ -216,7 +216,7 @@ bool XteinkDisplay::configure_lab_() {
 }
 bool XteinkDisplay::show_calibration_image(uint8_t image, uint32_t argument) {
   if (!calibration_active_ || lab_->busy() || exit_requested_ ||
-      image < 1 || image > uint8_t(::x4render::TestImage::LoadStrip)) return false;
+      image < 1 || image > uint8_t(::x4render::TestImage::SplitCheckerboard)) return false;
   if (!configure_lab_()) return false;
   if (!lab_->startImage(millis(), ::x4render::TestImage(image), argument)) return false;
   last_test_image_ = image;
@@ -230,6 +230,9 @@ std::string XteinkDisplay::calibration_image() const {
   if (!lab_) return "none";
   if (lab_->image() == ::x4render::TestImage::LoadStrip)
     return "load strip; " + std::to_string(lab_->stripWidth()) + " switching columns";
+  if (lab_->image() == ::x4render::TestImage::SplitCheckerboard)
+    return "split checkerboard; " + std::to_string(lab_->imageSeed()) + " per rail; " +
+           std::to_string(lab_->stripCount()) + " strips";
   const char* names[] = {"calibration", "white", "black", "known reference", "random edges",
                          "landscape dither", "landscape gray", "neighbor sweep", "linear ramp",
                          "ramp base only", "ramp inverse only", "load stripes",

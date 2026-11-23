@@ -1,5 +1,46 @@
 # X4 waveform lab
 
+## Checking a split update (v14)
+
+The centered v13 sweep rendered cleanly at 160 columns. At 240 the user
+reported weaker sound than at 320, better rendering, and less ghosting.
+At 320 the checkerboard looked pale during the update and the switching
+was clearly audible. At 400 the pattern only appeared in the final
+stages and no switching sound was audible. The side references were
+unaffected at 320. Use optical inversion and ghosting to assess the
+split. Sound alone is an unreliable indicator.
+
+With the saved **Factory Tuned** setup and **Factory Prime** off, run
+**Clear White → Checkerboard** as the one-pass control. Then run
+**Clear White → Split Checkerboard**, leaving **Rail Budget** at **80**.
+The second button draws the same full-width image in five 160-column
+passes. **Test Image** reports the budget and number of passes. Wait for
+**Result → complete**, which applies to the entire sequence.
+
+Watch for clean inversion in each active strip and for earlier strips
+and untouched white areas to stay steady as the next strip refreshes.
+Compare the final image for seams and ghosting. The test passes if it
+improves the inversion and the other strips remain stable. A lower
+Rail Budget makes the strips narrower. Factory Replay can run the same
+experiment with its own optical threshold. Factory OTP supports the
+single-pass controls and cannot use the split mask.
+
+For each adjacent visible row pair, the planner adds the black-to-white
+and white-to-black popcounts independently across byte-aligned columns.
+It starts a new strip before either count exceeds the budget. Width is
+also limited to twice the budget to account for the modeled half-swing
+from idle to a common active rail at scan entry. At budget 80 this means
+up to 160 balanced columns or 80 columns for all-one-direction changes.
+This is an estimate under the source-voltage model.
+
+Each pass uses full panel addressing. Both DTM bits are zero for hidden
+gates and pixels outside the active strip. Their external LUT row has
+the same timing as VCOM and requests code 0 throughout. This code has
+held references in the grayscale tests. Holding through multiple full B/W
+passes still needs optical verification. Normal rendering bypasses the
+split diagnostic.
+
+
 ## Measuring the switching limit (v13)
 
 Under **Test Patterns**, set **Strip Width** and then press **Load Strip**.
