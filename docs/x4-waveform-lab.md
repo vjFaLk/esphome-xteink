@@ -34,6 +34,14 @@ each zone, before gray settle if the image has one. Start with Ramp Base and
 keep its texture, budget and waveform fixed while comparing the three choices.
 The experiment defaults to Off and applies only in the diagnostic lab.
 
+**Gray Tuning → Zone Gray Settle** repeats the B/W zone masks during the
+gray pass, using the same lane width, order and candidate waveform. Each
+pixel receives its selected gray pulse in exactly one pass. Other lanes
+select Hold Code 0. With a one-pass B/W plan the switch has no effect.
+Compare Linear Ramp with the switch off and on while keeping **After Zones**,
+**Gray Dither**, and the pulse controls fixed. **Zone Plan** reports the
+actual gray pass count. The switch is off at boot.
+
 Capture **Gray Tuning → Neighbor Mixes** with exposure and lighting locked.
 It shows the eight raw references and seven adjacent-pair rows with 17
 coverage steps each. Capture **Linear Ramp** without changing the exposure,
