@@ -47,6 +47,10 @@ class XteinkDisplay : public display::DisplayBuffer {
   bool condition_panel_step(uint8_t) { return run_calibration(false, 0, true); }
   void end_panel_conditioning() { end_calibration(); }
   bool begin_calibration();
+  bool run_stable_gray(bool rebuild, bool rotate = false);
+  void set_stable_frames(uint8_t index, uint8_t value) {
+    if (index < stable_frames_.size()) stable_frames_[index] = value;
+  }
   bool run_calibration(bool rebuild = true, bool rotate = false,
                        bool conditioning = false);
   void end_calibration();
@@ -195,6 +199,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   std::array<uint8_t, 6> shade_sequence_{1,2,3,4,5,6};
   std::array<::x4render::CoverageCurve, 7> coverage_{};
   uint8_t measured_mask_{0};
+  std::array<uint8_t, 3> stable_frames_{{3, 7, 12}};
   uint8_t candidate_frames_[3]{2, 3, 4}, pulse_rail_{2}, pulse_opposite_{3},
       pulse_repeats_{1}, pulse_neutral_{1}, hold_rail_{0};
 };

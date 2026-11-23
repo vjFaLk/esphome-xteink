@@ -282,6 +282,10 @@ bool XteinkDisplay::run_calibration(bool rebuild, bool rotate,
   if (!configure_lab_()) return false;
   return lab_->start(millis(), rebuild, rotate, conditioning);
 }
+bool XteinkDisplay::run_stable_gray(bool rebuild, bool rotate) {
+  if (!calibration_active_ || lab_->busy() || exit_requested_ || !configure_lab_()) return false;
+  return lab_->startStable(millis(), stable_frames_, rebuild, rotate);
+}
 bool XteinkDisplay::configure_lab_() {
   factory_error_ = nullptr;
   const auto snapshot = freeink::getXteinkPanelMtpSnapshot();
@@ -349,6 +353,7 @@ bool XteinkDisplay::repeat_calibration_image() {
 }
 std::string XteinkDisplay::calibration_image() const {
   if (!lab_) return "none";
+  if (lab_->stableChart()) return "stable gray chart";
   if (lab_->image() == ::x4render::TestImage::LoadStrip) {
     const char* pattern[] = {"", "; distributed", "; 1 on / 1 off", "; 8 on / 8 off",
                              "; jittered", "; staggered"};
@@ -590,7 +595,7 @@ const char* XteinkDisplay::calibration_pipeline() const {
     case J::Pause:
       return "bw_to_gray_host_pause";
     case J::Settle:
-      return "raw_candidate_settle";
+      return lab_->stableChart() ? "stable_candidate_settle" : "raw_candidate_settle";
     case J::Conditioning:
       return "raw_full_panel_pulse_sequence";
     case J::PowerOff:
@@ -616,6 +621,11 @@ std::string XteinkDisplay::calibration_assignments() const {
   if (!lab_ || !lab_->settleLut(0)) return "not programmed";
   char text[100];
   const uint8_t r = lab_->programmedRotation();
+  if (lab_->stableChart()) {
+    std::snprintf(text, sizeof(text), "factory black then lighten; id %u; left=G%u middle=G%u right=G%u",
+                  unsigned(lab_->waveformId()), 1u + r, 1u + (r + 1) % 3, 1u + (r + 2) % 3);
+    return text;
+  }
   std::snprintf(
       text, sizeof(text),
       "v5 absolute-BW; opposite-first; id %u; left=%c middle=%c right=%c",

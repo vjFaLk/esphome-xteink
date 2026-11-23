@@ -8,6 +8,8 @@ esphome:
       name: "B/W Setup"
     - id: lab_gray
       name: "Gray Tuning"
+    - id: lab_stable_gray
+      name: "Stable Gray"
     - id: lab_images
       name: "Test Patterns"
     - id: lab_traces
@@ -92,6 +94,27 @@ switch:
       - lambda: id(x4_display).set_detailed_logging(false);
 
 button:
+  - platform: template
+    name: "Build Chart"
+    device_id: lab_stable_gray
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: id(x4_display).run_stable_gray(true);
+  - platform: template
+    name: "Repeat"
+    device_id: lab_stable_gray
+    entity_category: diagnostic
+    on_press:
+      - lambda: id(x4_display).run_stable_gray(false);
+  - platform: template
+    name: "Rotate"
+    device_id: lab_stable_gray
+    entity_category: diagnostic
+    on_press:
+      - lambda: id(x4_display).run_stable_gray(false, true);
+
   - platform: template
     name: "Rebuild Chart"
     device_id: lab_gray
@@ -726,6 +749,45 @@ text_sensor:
     lambda: return {id(x4_display).calibration_assignments()};
 
 number:
+  - platform: template
+    name: "G1 Frames"
+    device_id: lab_stable_gray
+    entity_category: diagnostic
+    min_value: 1
+    max_value: 30
+    step: 1
+    mode: box
+    optimistic: true
+    initial_value: 3
+    on_value:
+      - lambda: id(x4_display).set_stable_frames(0, uint8_t(x));
+
+  - platform: template
+    name: "G2 Frames"
+    device_id: lab_stable_gray
+    entity_category: diagnostic
+    min_value: 1
+    max_value: 30
+    step: 1
+    mode: box
+    optimistic: true
+    initial_value: 7
+    on_value:
+      - lambda: id(x4_display).set_stable_frames(1, uint8_t(x));
+
+  - platform: template
+    name: "G3 Frames"
+    device_id: lab_stable_gray
+    entity_category: diagnostic
+    min_value: 1
+    max_value: 30
+    step: 1
+    mode: box
+    optimistic: true
+    initial_value: 12
+    on_value:
+      - lambda: id(x4_display).set_stable_frames(2, uint8_t(x));
+
   - platform: template
     name: "Local Budget"
     device_id: lab_images
