@@ -18,6 +18,17 @@ xteink:
 
 switch:
   - platform: template
+    name: "Split if Needed"
+    device_id: lab_images
+    entity_category: diagnostic
+    optimistic: true
+    restore_mode: ALWAYS_ON
+    turn_on_action:
+      - lambda: id(x4_display).set_bw_split_guard(true);
+    turn_off_action:
+      - lambda: id(x4_display).set_bw_split_guard(false);
+
+  - platform: template
     name: "Factory Prime"
     device_id: lab_bw
     entity_category: diagnostic
@@ -261,6 +272,39 @@ button:
           id(x4_display).show_calibration_image(
               uint8_t(::x4render::TestImage::SplitCheckerboard), uint32_t(id(lab_rail_budget).state));
 
+  - platform: template
+    name: "B/W Photo"
+    device_id: lab_images
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: |-
+          id(x4_display).show_calibration_image(
+              uint8_t(::x4render::TestImage::BwPhoto), uint32_t(id(lab_rail_budget).state));
+
+  - platform: template
+    name: "B/W Checker"
+    device_id: lab_images
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: |-
+          id(x4_display).show_calibration_image(
+              uint8_t(::x4render::TestImage::BwChecker), uint32_t(id(lab_rail_budget).state));
+
+  - platform: template
+    name: "B/W Boiler"
+    device_id: lab_images
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: |-
+          id(x4_display).show_calibration_image(
+              uint8_t(::x4render::TestImage::BwBoiler), uint32_t(id(lab_rail_budget).state));
+
 text:
   - platform: template
     id: lab_shade_sequence
@@ -335,6 +379,23 @@ script:
             - script.execute: interactive_sleep
 
 select:
+  - platform: template
+    name: "B/W Texture"
+    device_id: lab_images
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: false
+    initial_option: "Bayer"
+    options:
+      - "Bayer"
+      - "Column Stable"
+      - "Row Repair"
+    on_value:
+      - lambda: |-
+          using Mode = ::x4render::BwTexture;
+          id(x4_display).set_bw_texture(x == "Column Stable" ? Mode::Columns :
+                                      x == "Row Repair" ? Mode::Repair : Mode::Bayer);
+
   - platform: template
     name: "Cold Start"
     device_id: lab_bw
@@ -424,6 +485,13 @@ sensor:
     update_interval: 1s
     lambda: return id(x4_display).calibration_cycles();
 text_sensor:
+  - platform: template
+    name: "Source Load"
+    device_id: lab_images
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: return {id(x4_display).calibration_bw_load()};
+
   - platform: template
     name: "Factory Table"
     device_id: lab_bw

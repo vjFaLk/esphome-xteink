@@ -65,6 +65,8 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_pulse_neutral(uint8_t value) { pulse_neutral_ = value; }
   void set_hold_rail(uint8_t value) { hold_rail_ = value; }
   void set_bw_mode(uint8_t mode) { bw_mode_ = mode; }
+  void set_bw_texture(::x4render::BwTexture value) { bw_texture_ = value; }
+  void set_bw_split_guard(bool value) { bw_split_guard_ = value; }
   void set_bw_activation_frames(uint8_t v) { bw_tuning_.shakeFrames = v; }
   void set_bw_activation_cycles(uint8_t v) { bw_tuning_.shakeCycles = v; }
   void set_bw_reference_frames(uint8_t v) { bw_tuning_.whiteReference = v; }
@@ -78,6 +80,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   bool show_calibration_image(uint8_t image, uint32_t argument = 0);
   bool repeat_calibration_image();
   std::string calibration_image() const;
+  std::string calibration_bw_load() const;
   std::string calibration_waveform(uint8_t row, bool hex = false,
                                    bool preparation = false) const;
   std::string calibration_assignments() const;
@@ -151,6 +154,8 @@ class XteinkDisplay : public display::DisplayBuffer {
   bool exit_shutdown_attempted_{false}, exit_failed_{false};
   uint8_t last_test_image_{3};
   uint8_t panel_power_setup_{2}, bw_mode_{2};
+  ::x4render::BwTexture bw_texture_{::x4render::BwTexture::Bayer};
+  bool bw_split_guard_{true};
   bool temp_override_{false};
   int manual_temp_c_{30};
   const char* factory_error_{nullptr};

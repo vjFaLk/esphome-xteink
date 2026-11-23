@@ -1,5 +1,46 @@
 # X4 waveform lab
 
+## Comparing B/W textures on the panel (v15)
+
+In **Test Patterns**, select **B/W Texture**, then press **B/W Photo**,
+**B/W Checker**, or **B/W Boiler**. These are full B/W tests. The boiler
+test uses the most recently committed dashboard frame. Let the normal
+dashboard refresh once after boot so that snapshot is available.
+
+- **Bayer** preserves the original bitmap for a single-pass control.
+- **Column Stable** uses one ordered luminance threshold per physical
+  column. It keeps the checkerboard reference patches and uses the known
+  50% tone for their background. It keeps hard endpoints and high-contrast
+  edges from the boiler snapshot. Expect a finer or coarser vertical
+  texture depending on gray level.
+- **Row Repair** spreads omitted transitions along each scan row using an
+  integer accumulator. Paired changes are preferentially removed together
+  inside eight-column groups to limit tone error. It budgets both rails
+  independently, with 32-column caps and an eight-row recovery estimate.
+  The boiler preview returns to its exact Bayer bits if a protected edge
+  would be altered. The synthetic checker references can show minor edits
+  in this mode.
+
+**Rail Budget** defaults to 80. In Row Repair it sets the whole-row cap;
+per 32-column tile the instantaneous and recent limits are 12 and 8 at
+that setting. For either new texture **Split if Needed** also checks the
+candidate's largest 128-column load and recent load across the scan.
+The default provisional limits are 80, 60, and 40 respectively. If exceeded,
+the existing full-address, masked split path uses a budget of 40 per rail
+so that it also fits the recent-load limit. Lower budgets can require more
+passes. Split requires Factory Tuned or Factory Replay and prime off.
+Turn the guard off for deliberate single-pass A/B comparison.
+
+**Source Load** reports original and rendered peak per rail, peak in a
+byte-aligned 128-column span, and peak recent load in that span. These
+are visible-row bitmap estimates before any split. **Test Image** reports
+the actual texture, a protected-edge fallback, and the number of strips.
+Keep the B/W drive settings fixed and **Clear White** before each trial.
+Compare inversion, texture, ghosting, and detail. Check any guard fallback
+for seams or drift between passes. The normal dashboard rendering and the
+gray calibration charts run through their original paths.
+
+
 ## Checking a split update (v14)
 
 The centered v13 sweep rendered cleanly at 160 columns. At 240 the user

@@ -210,15 +210,23 @@ bool XteinkDisplay::configure_lab_() {
   lab_->imagePalette = diagnostic_palette_();
   lab_->bwPreparation = bw_preparation_;
   lab_->bwPreparation.programmable = bw_mode_ != 0;
+  lab_->boilerLuma = ready_ && has_frame_ ? frames_.displayed.data() : nullptr;
+  lab_->bwTexture = bw_texture_;
+  lab_->bwSplitGuard = bw_split_guard_;
   lab_->verticalWindowValidated = vertical_window_;
   lab_->croppedUploadValidated = cropped_upload_;
   return true;
 }
 bool XteinkDisplay::show_calibration_image(uint8_t image, uint32_t argument) {
   if (!calibration_active_ || lab_->busy() || exit_requested_ ||
-      image < 1 || image > uint8_t(::x4render::TestImage::SplitCheckerboard)) return false;
+      image < 1 || image > uint8_t(::x4render::TestImage::BwBoiler)) return false;
   if (!configure_lab_()) return false;
-  if (!lab_->startImage(millis(), ::x4render::TestImage(image), argument)) return false;
+  const auto test = ::x4render::TestImage(image);
+  if (::x4render::usesBwTexture(test)) {
+    if (argument < 32 || argument > 160) return false;
+    lab_->bwBudget = uint16_t(argument);
+  }
+  if (!lab_->startImage(millis(), test, argument)) return false;
   last_test_image_ = image;
   last_image_argument_ = argument;
   return true;
@@ -233,6 +241,17 @@ std::string XteinkDisplay::calibration_image() const {
   if (lab_->image() == ::x4render::TestImage::SplitCheckerboard)
     return "split checkerboard; " + std::to_string(lab_->imageSeed()) + " per rail; " +
            std::to_string(lab_->stripCount()) + " strips";
+  if (::x4render::usesBwTexture(lab_->image())) {
+    using T = ::x4render::TestImage;
+    using M = ::x4render::BwTexture;
+    std::string value = lab_->image() == T::BwPhoto ? "B/W photo" :
+                        lab_->image() == T::BwChecker ? "B/W checker" : "B/W boiler";
+    const auto mode = lab_->renderedBwTexture();
+    value += mode == M::Columns ? "; column stable" : mode == M::Repair ? "; row repair" : "; Bayer";
+    if (lab_->protectedFallback()) value += " (protected edges)";
+    if (lab_->stripCount()) value += "; " + std::to_string(lab_->stripCount()) + " strips";
+    return value;
+  }
   const char* names[] = {"calibration", "white", "black", "known reference", "random edges",
                          "landscape dither", "landscape gray", "neighbor sweep", "linear ramp",
                          "ramp base only", "ramp inverse only", "load stripes",
@@ -240,6 +259,15 @@ std::string XteinkDisplay::calibration_image() const {
   char value[80];
   std::snprintf(value, sizeof(value), "%s; seed %08lX", names[uint8_t(lab_->image())],
                 (unsigned long)lab_->imageSeed());
+  return value;
+}
+std::string XteinkDisplay::calibration_bw_load() const {
+  if (!lab_ || !::x4render::usesBwTexture(lab_->image())) return "No B/W texture test";
+  const auto before = lab_->requestedBwLoad(), after = lab_->renderedBwLoad();
+  char value[120];
+  std::snprintf(value, sizeof(value), "Peak/rail %u to %u; 128 cols %u to %u; recent %u to %u",
+                unsigned(before.peak), unsigned(after.peak), unsigned(before.localPeak),
+                unsigned(after.localPeak), unsigned(before.recentPeak), unsigned(after.recentPeak));
   return value;
 }
 void XteinkDisplay::end_calibration() {
