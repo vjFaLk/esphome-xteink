@@ -743,3 +743,21 @@ For a useful comparison:
 Do not treat changing the selector in a warm session as a cold-start test. Do not
 select Factory OTP between entering calibration and running the programmable
 comparison. Physical confirmation is still required for both new setup choices.
+
+## Stable gray checkpoint
+
+In **Stable Gray**, **Build Chart** sets the first row to black and the
+second to white, then applies G1, G2 and G3 to both rows. Each gray
+selector is the verified factory-derived black waveform followed by a
+lightening pulse in the same LUT. VCOM and non-target pixels follow the
+same timing with hold selected. The additional gray pulse has no
+opposite prefix. The existing factory inversion remains in the reset.
+
+**G1/G2/G3 Frames** set lightening dose independently (initially 3/7/12).
+Larger values are expected to lighten the shade. Rebuild after changing
+a count. **Repeat** applies the same banks to the same pixels. **Rotate**
+cycles the candidates through the columns and takes their previous grays
+as starting states. The **Patch Order**
+readout on Gray Tuning shows current G assignments. Compare the two
+starting rows and the three held references. Check several repeats and
+both rotations for visible shifts before selecting the stable levels.
