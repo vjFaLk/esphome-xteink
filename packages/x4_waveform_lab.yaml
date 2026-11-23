@@ -457,8 +457,12 @@ select:
     options:
       - "Column Stable"
       - "Bayer"
+      - "Row Repair"
     on_value:
-      - lambda: id(x4_display).set_gray_columns(x == "Column Stable");
+      - lambda: |-
+          using Mode = ::x4render::GrayDither;
+          id(x4_display).set_gray_dither(x == "Row Repair" ? Mode::Repair :
+                                       x == "Column Stable" ? Mode::Columns : Mode::Bayer);
   - platform: template
     name: "B/W Drive"
     device_id: lab_bw

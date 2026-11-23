@@ -319,7 +319,7 @@ bool XteinkDisplay::configure_lab_() {
   lab_->burstHeadroom = bw_burst_headroom_;
   lab_->bwLocalBudget = bw_local_budget_;
   lab_->bwBudget = bw_rail_budget_;
-  lab_->grayColumns = gray_columns_;
+  lab_->grayDither = gray_dither_;
   lab_->bwSplitGuard = bw_split_guard_;
   lab_->grayZoneGuard = bw_split_guard_;
   lab_->verticalWindowValidated = vertical_window_;
@@ -383,7 +383,9 @@ std::string XteinkDisplay::calibration_image() const {
                 (unsigned long)lab_->imageSeed());
   std::string result = value;
   if (::x4render::grayPreparationImage(lab_->image())) {
-    if (lab_->grayColumns) result += "; column dither";
+    if (lab_->grayDither == ::x4render::GrayDither::Columns) result += "; column dither";
+    if (lab_->grayDither == ::x4render::GrayDither::Repair)
+      result += "; row repair " + std::to_string(lab_->repairStrength) + "%";
     if (lab_->zonePlan().count > 1) result += "; " + std::to_string(lab_->zonePlan().count) + " base zones";
   }
   return result;
