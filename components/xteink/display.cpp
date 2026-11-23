@@ -669,21 +669,11 @@ bool XteinkDisplay::set_shade_sequence(const std::string& value) {
   return true;
 }
 ::x4render::Palette XteinkDisplay::diagnostic_palette_() const {
-  auto palette = ::x4render::provisionalRelativePalette();
   if (measured_mask_ == 63) {
-    auto order = shade_sequence_;
-    std::sort(order.begin(), order.end(), [this](uint8_t a, uint8_t b) {
-      return measured_[a - 1] < measured_[b - 1];
-    });
-    for (uint8_t i = 1; i <= 6; ++i)
-      palette.shades[i] = ::x4render::relativeShade(order[i - 1], measured_[order[i - 1] - 1]);
-    palette.coverage = coverage_;
-    if (palette.valid()) {
-      palette.calibrated = true;
-      return palette;
-    }
-    palette = ::x4render::provisionalRelativePalette();
+    const auto measured = ::x4render::measuredRelativePalette(measured_, coverage_);
+    if (measured.calibrated) return measured;
   }
+  auto palette = ::x4render::provisionalRelativePalette();
   for (uint8_t i = 1; i <= 6; ++i)
     palette.shades[i] = ::x4render::relativeShade(shade_sequence_[i - 1], palette.shades[i].luma);
   return palette;
