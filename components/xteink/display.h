@@ -107,6 +107,12 @@ class XteinkDisplay : public display::DisplayBuffer {
     }
   }
   std::string calibration_order() const;
+  bool set_shade_sequence(const std::string& value);
+  void set_dither_luminance(uint8_t id, uint8_t luma) { set_measured_shade(id, luma); }
+  void set_dither_curve(uint8_t pair, uint8_t step, uint8_t value) {
+    if (pair < coverage_.size() && step < coverage_[pair].size()) coverage_[pair][step] = value;
+  }
+
 
   display::DisplayType get_display_type() override {
     return grayscale_ ? display::DISPLAY_TYPE_GRAYSCALE
@@ -132,6 +138,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   bool finish_normal_(bool wait);
   bool configure_lab_();
   int factory_temperature_() const;
+  ::x4render::Palette diagnostic_palette_() const;
   Xteink* parent_{nullptr};
   optional<xteink_writer_t> writer_{};
   ::x4render::Frames frames_;
@@ -143,7 +150,7 @@ class XteinkDisplay : public display::DisplayBuffer {
       calibration_active_{false}, exit_requested_{false};
   bool exit_shutdown_attempted_{false}, exit_failed_{false};
   uint8_t last_test_image_{3};
-  uint8_t panel_power_setup_{2}, bw_mode_{1};
+  uint8_t panel_power_setup_{2}, bw_mode_{2};
   bool temp_override_{false};
   int manual_temp_c_{30};
   const char* factory_error_{nullptr};
@@ -154,10 +161,12 @@ class XteinkDisplay : public display::DisplayBuffer {
   int refresh_mode_{HALF_REFRESH}, requested_mode_{0};
   uint32_t full_every_{0}, partials_{0};
   ::x4render::BwPreparation bw_preparation_{};
-  ::x4render::FactoryBwTuning bw_tuning_{};
+  ::x4render::FactoryBwTuning bw_tuning_{1, 2, 5, 0, 3};
   std::array<uint8_t, 6> measured_{};
+  std::array<uint8_t, 6> shade_sequence_{1,2,3,4,5,6};
+  std::array<::x4render::CoverageCurve, 7> coverage_{};
   uint8_t measured_mask_{0};
-  uint8_t candidate_frames_[3]{2, 4, 6}, pulse_rail_{2}, pulse_opposite_{0},
+  uint8_t candidate_frames_[3]{2, 3, 4}, pulse_rail_{2}, pulse_opposite_{3},
       pulse_repeats_{1}, pulse_neutral_{1}, hold_rail_{0};
 };
 }  // namespace xteink

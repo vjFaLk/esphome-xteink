@@ -185,6 +185,44 @@ button:
       - script.wait: waveform_take_control
       - lambda: id(x4_display).show_calibration_image(6);
 
+  - platform: template
+    name: "Neighbor Mixes"
+    device_id: lab_gray
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: id(x4_display).show_calibration_image(7);
+
+  - platform: template
+    name: "Linear Ramp"
+    device_id: lab_gray
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: id(x4_display).show_calibration_image(8);
+
+text:
+  - platform: template
+    id: lab_shade_sequence
+    name: "Shade Sequence"
+    device_id: lab_gray
+    entity_category: diagnostic
+    mode: text
+    min_length: 6
+    max_length: 6
+    pattern: "[1-6]{6}"
+    optimistic: false
+    restore_value: false
+    initial_value: "123456"
+    set_action:
+      - lambda: |-
+          if (id(x4_display).set_shade_sequence(x))
+            id(lab_shade_sequence).publish_state(x);
+          else
+            ESP_LOGW("waveform_lab", "Shade Sequence must include each of 1-6 once");
+
 script:
   - id: waveform_take_control
     mode: single
@@ -275,7 +313,7 @@ select:
     entity_category: diagnostic
     optimistic: true
     restore_value: false
-    initial_option: "Factory Replay"
+    initial_option: "Factory Tuned"
     options:
       - "Factory OTP"
       - "Factory Replay"
@@ -664,7 +702,7 @@ number:
     min_value: -4
     max_value: 8
     step: 1
-    initial_value: 0
+    initial_value: 3
     on_value:
       - lambda: id(x4_display).set_bw_pause_trim(x);
   - platform: template
@@ -676,7 +714,7 @@ number:
     min_value: 0
     max_value: 8
     step: 1
-    initial_value: 0
+    initial_value: 1
     on_value:
       - lambda: id(x4_display).set_bw_activation_frames(x);
   - platform: template
@@ -700,7 +738,7 @@ number:
     min_value: 0
     max_value: 32
     step: 1
-    initial_value: 0
+    initial_value: 5
     on_value:
       - lambda: id(x4_display).set_bw_reference_frames(x);
   - platform: template

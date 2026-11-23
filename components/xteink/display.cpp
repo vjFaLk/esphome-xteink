@@ -207,6 +207,7 @@ bool XteinkDisplay::configure_lab_() {
     lab_->parameters[i] = {pulse_rail_, candidate_frames_[i], pulse_opposite_,
                            pulse_repeats_, pulse_neutral_};
   lab_->holdRail = hold_rail_;
+  lab_->imagePalette = diagnostic_palette_();
   lab_->bwPreparation = bw_preparation_;
   lab_->bwPreparation.programmable = bw_mode_ != 0;
   lab_->verticalWindowValidated = vertical_window_;
@@ -215,7 +216,7 @@ bool XteinkDisplay::configure_lab_() {
 }
 bool XteinkDisplay::show_calibration_image(uint8_t image, uint32_t seed) {
   if (!calibration_active_ || lab_->busy() || exit_requested_ ||
-      image < 1 || image > 6) return false;
+      image < 1 || image > uint8_t(::x4render::TestImage::LinearRamp)) return false;
   if (!configure_lab_()) return false;
   if (!lab_->startImage(millis(), ::x4render::TestImage(image), seed)) return false;
   last_test_image_ = image;
@@ -228,7 +229,7 @@ bool XteinkDisplay::repeat_calibration_image() {
 std::string XteinkDisplay::calibration_image() const {
   if (!lab_) return "none";
   const char* names[] = {"calibration", "white", "black", "known reference", "random edges",
-                         "landscape dither", "landscape gray trial"};
+                         "landscape dither", "landscape gray", "neighbor sweep", "linear ramp"};
   char value[80];
   std::snprintf(value, sizeof(value), "%s; seed %08lX", names[uint8_t(lab_->image())],
                 (unsigned long)lab_->imageSeed());
@@ -450,25 +451,49 @@ std::string XteinkDisplay::calibration_region() const {
                 lab_->programmedHoldRail());
   return text;
 }
-std::string XteinkDisplay::calibration_order() const {
-  if (measured_mask_ != 63)
-    return "Enter six measured luminances: 0=black 255=white. Ordering "
-           "unknown.";
-  std::array<uint8_t, 6> order{0, 1, 2, 3, 4, 5};
-  std::sort(order.begin(), order.end(), [this](uint8_t a, uint8_t b) {
-    return measured_[a] < measured_[b];
-  });
-  std::string result = "B0";
-  uint8_t last = 0;
-  char item[40];
-  for (uint8_t i : order) {
-    std::snprintf(item, sizeof(item), " | %c-%c=%u gap%u", char('A' + i % 3),
-                  i < 3 ? 'B' : 'W', measured_[i], measured_[i] - last);
-    result += item;
-    last = measured_[i];
+bool XteinkDisplay::set_shade_sequence(const std::string& value) {
+  if (value.size() != shade_sequence_.size()) return false;
+  std::array<uint8_t, 6> sequence{};
+  uint8_t used = 0;
+  for (size_t i = 0; i < sequence.size(); ++i) {
+    if (value[i] < '1' || value[i] > '6') return false;
+    const uint8_t id = value[i] - '0';
+    if (used & (1u << id)) return false;
+    used |= 1u << id;
+    sequence[i] = id;
   }
-  std::snprintf(item, sizeof(item), " | W255 gap%u", 255 - last);
-  return result + item;
+  shade_sequence_ = sequence;
+  return true;
+}
+::x4render::Palette XteinkDisplay::diagnostic_palette_() const {
+  auto palette = ::x4render::provisionalRelativePalette();
+  if (measured_mask_ == 63) {
+    auto order = shade_sequence_;
+    std::sort(order.begin(), order.end(), [this](uint8_t a, uint8_t b) {
+      return measured_[a - 1] < measured_[b - 1];
+    });
+    for (uint8_t i = 1; i <= 6; ++i)
+      palette.shades[i] = ::x4render::relativeShade(order[i - 1], measured_[order[i - 1] - 1]);
+    palette.coverage = coverage_;
+    if (palette.valid()) {
+      palette.calibrated = true;
+      return palette;
+    }
+    palette = ::x4render::provisionalRelativePalette();
+  }
+  for (uint8_t i = 1; i <= 6; ++i)
+    palette.shades[i] = ::x4render::relativeShade(shade_sequence_[i - 1], palette.shades[i].luma);
+  return palette;
+}
+std::string XteinkDisplay::calibration_order() const {
+  const auto palette = diagnostic_palette_();
+  std::string result = palette.calibrated ? "Measured: " : "Provisional: ";
+  for (uint8_t i = 0; i < palette.count; ++i) {
+    if (i) result += " | ";
+    result += ::x4render::shadeLabel(::x4render::relativeShadeId(palette.shades[i]));
+    if (palette.calibrated) result += "=" + std::to_string(palette.shades[i].luma);
+  }
+  return result;
 }
 bool XteinkDisplay::flush_for_deep_sleep() {
   if (calibration_active_ || virtual_) return false;
