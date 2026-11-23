@@ -218,6 +218,8 @@ bool XteinkDisplay::configure_lab_() {
   lab_->bwTexture = bw_texture_;
   lab_->columnStrength = bw_column_strength_;
   lab_->repairStrength = bw_repair_strength_;
+  lab_->columnGrain = bw_column_grain_;
+  lab_->burstHeadroom = bw_burst_headroom_;
   lab_->bwSplitGuard = bw_split_guard_;
   lab_->verticalWindowValidated = vertical_window_;
   lab_->croppedUploadValidated = cropped_upload_;
@@ -260,6 +262,10 @@ std::string XteinkDisplay::calibration_image() const {
     value += mode == M::Columns ? "; column stable" : mode == M::Repair ? "; row repair" : "; Bayer";
     if (mode != M::Bayer && lab_->bwStrength() < 100)
       value += " " + std::to_string(lab_->bwStrength()) + "%";
+    if (mode == M::Columns && lab_->columnGrain)
+      value += "; grain " + std::to_string(lab_->columnGrain) + "%";
+    if (mode != M::Bayer && lab_->burstHeadroom)
+      value += "; headroom " + std::to_string(lab_->burstHeadroom);
     if (lab_->protectedFallback()) value += " (protected edges)";
     if (lab_->stripCount()) value += "; " + std::to_string(lab_->stripCount()) + " strips";
     return value;

@@ -663,6 +663,35 @@ text_sensor:
 
 number:
   - platform: template
+    name: "Column Grain"
+    device_id: lab_images
+    entity_category: diagnostic
+    min_value: 0
+    max_value: 100
+    step: 5
+    unit_of_measurement: "%"
+    mode: box
+    optimistic: true
+    restore_value: false
+    initial_value: 0
+    set_action:
+      - lambda: id(x4_display).set_bw_column_grain(uint8_t(x));
+
+  - platform: template
+    name: "Burst Headroom"
+    device_id: lab_images
+    entity_category: diagnostic
+    min_value: 0
+    max_value: 80
+    step: 4
+    mode: box
+    optimistic: true
+    restore_value: false
+    initial_value: 0
+    set_action:
+      - lambda: id(x4_display).set_bw_burst_headroom(uint8_t(x));
+
+  - platform: template
     name: "Column Strength"
     device_id: lab_images
     entity_category: diagnostic

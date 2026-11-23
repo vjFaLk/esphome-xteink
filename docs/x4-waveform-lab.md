@@ -28,6 +28,23 @@ Staggered use a fixed seed and the same bitmap repeats on each waveform
 frame. Their source-charge estimates can be compared with the existing
 probes before using the result to change the renderer.
 
+**Column Grain** optionally breaks long vertical texture in **Column
+Stable**. It lets neighboring thresholds trade places in selected column
+pairs, with staggered opportunities every eight rows. Each pair keeps the
+same thresholds and flat-tone coverage. Start around 25–50%. Higher values
+let more pairs vary and may increase switching.
+
+**Burst Headroom** lets Row Repair borrow that many extra switches into
+either rail, measured separately. A row under the regular Rail Budget
+replenishes its rail's credit. A run above budget spends credit until the
+normal limit applies. The split guard checks the same credit rule when
+allowing any rendered image above the usual peak. The local load limits
+still apply. A trial of Rail Budget 160 and Headroom 40 accepts the modeled
+400-column 1-on/1-off schedule, while an eight-row burst exhausts the
+allowance. Start from Headroom 0 and compare optically and acoustically.
+At full Repair Strength the limiter enforces this model. Both new controls
+default to zero to reproduce the previous renderer.
+
 
 ## Adjusting texture strength and probing load (v16)
 

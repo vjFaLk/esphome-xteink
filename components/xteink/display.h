@@ -68,6 +68,8 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_bw_texture(::x4render::BwTexture value) { bw_texture_ = value; }
   void set_bw_column_strength(uint8_t value) { bw_column_strength_ = value; }
   void set_bw_repair_strength(uint8_t value) { bw_repair_strength_ = value; }
+  void set_bw_column_grain(uint8_t value) { bw_column_grain_ = value; }
+  void set_bw_burst_headroom(uint8_t value) { bw_burst_headroom_ = value; }
   void set_bw_split_guard(bool value) { bw_split_guard_ = value; }
   void set_bw_activation_frames(uint8_t v) { bw_tuning_.shakeFrames = v; }
   void set_bw_activation_cycles(uint8_t v) { bw_tuning_.shakeCycles = v; }
@@ -159,6 +161,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   uint8_t panel_power_setup_{2}, bw_mode_{2};
   ::x4render::BwTexture bw_texture_{::x4render::BwTexture::Bayer};
   uint8_t bw_column_strength_{100}, bw_repair_strength_{100};
+  uint8_t bw_column_grain_{0}, bw_burst_headroom_{0};
   bool bw_split_guard_{true};
   bool temp_override_{false};
   int manual_temp_c_{30};
