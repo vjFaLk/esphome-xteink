@@ -1,5 +1,23 @@
 # X4 waveform lab
 
+## Checking Linear Ramp inversion (v10)
+
+**Ramp Base** shows the exact B/W preparation target for Linear Ramp, including
+both bars and labels, then stops. **Ramp Inverse** sends the bitwise complement
+of that same target and stops. Both use a complete B/W waveform, under the
+selected B/W Drive, with no gray settle. The inversion view shows what the
+fully driven inverse target should look like. It does not freeze or truncate
+the normal drive midway.
+
+In IMG_5324, the photographed inverse phase has a vertical band crossing the
+two bars and the header. The expected complement has a sharp transition near
+mid-screen in the top bar and a gradual B/W transition across the lower bar.
+If both new views finish cleanly, compare a normal Linear Ramp using Factory
+Tuned and Factory Replay at the same temperature. That leaves the image data
+fixed and separates the tuned waveform additions from the factory waveform.
+If the band remains in a settled B/W view, compare that view in Factory OTP.
+
+
 ## Photographing neighboring shades (v9)
 
 The lab defaults reproduce the user's optically tuned preparation: Factory
