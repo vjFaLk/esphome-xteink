@@ -1,5 +1,52 @@
 # X4 waveform lab
 
+## Photographing neighboring shades (v9)
+
+The lab defaults reproduce the user's optically tuned preparation: Factory
+Tuned with panel power and clock, shake 1 frame per polarity × 2 pairs, White
+Ref. 5, Rest Trim +3, all other B/W trims zero and Factory Prime off. The
+relative gray pulses use A/B/C 2/3/4, rail 2, opposite 3, repeats 1, neutral 1,
+hold 0. Temperature still uses the normal Boot Sample setting.
+
+- **Gray Tuning → Neighbor Mixes** shows the eight raw references at the top.
+  Each of the seven rows names the two adjacent raw shades it uses. Column
+  00 is pure darker, 16 pure lighter; the intervening columns put exactly
+  that many lighter pixels in a 4×4 Bayer tile. The columns span 800 pixels.
+  This chart always shows all duty counts, independent of the current curves.
+- **Gray Tuning → Linear Ramp** shows a full-width ramp from A BLACK through
+  C WHITE. The upper bar uses the neighboring-gray palette. The lower bar
+  uses only black and white at the same nominal input luma for each column.
+- **Shade Sequence** sets a provisional order from dark to light. Enter
+  the digits 1–6 exactly once (1/2/3 = A/B/C from black, 4/5/6 = A/B/C
+  from white). 123456 is provisional. The fixed-identity reference strip
+  makes a wrong order visible. Six distinct measured shade values take
+  precedence over the provisional sequence.
+- **Gray Photo**, **Known Image**, and **Random Edges** use the same
+  neighboring-gray renderer. The photo preserves its B/W dither comparison
+  via **Dither Photo**. Pure clear buttons still run only the B/W pass.
+
+Photograph the full display on **Neighbor Mixes** first. If its raw references
+show a different order, set Shade Sequence and capture the chart again so we
+measure the right pairs. Capture **Linear Ramp** with the same locked exposure,
+WB, focus, and lighting. Keep the camera and display in the same positions.
+Include all screen edges and avoid clipping the white endpoint.
+
+**Driver calibration** is set on the ESPHome Xteink display with two optional
+YAML fields. `dither_luminance` takes six distinct 1–254 values in
+A/B/C-from-black, then A/B/C-from-white order. The driver sorts these values and
+supplies the black and white endpoints. `dither_curves` takes seven entries,
+one per adjacent pair in sorted dark-to-light order. Each entry is either an
+empty list (linear) or 17 nondecreasing values from 0 to 255 for measured
+optical progress at coverage counts 0/16 through 16/16. Equal samples let
+visually redundant steps collapse. The renderer picks the closest measured
+step, then uses only those two neighboring shades. These fields populate the
+rendering library's `Palette::shades` and `Palette::coverage`.
+
+The provisional levels are evenly spaced for diagnostics. Photo measurements
+are needed before calibrating the optical mapping or enabling this palette
+for the boiler UI.
+
+
 ## Factory replay and mottling experiments (v8)
 
 **B/W Setup → B/W Drive** defaults to **Factory Replay**. It loads five 49-byte
