@@ -359,7 +359,8 @@ hold 0. Temperature still uses the normal Boot Sample setting.
   that many lighter pixels in a 4×4 Bayer tile. The columns span 800 pixels.
   This chart always shows all duty counts, independent of the current curves.
 - **Gray Tuning → Linear Ramp** shows a full-width ramp from A BLACK through
-  C WHITE. The upper bar uses the neighboring-gray palette. The lower bar
+  C WHITE. An omitted endpoint uses the corresponding pure black or white.
+  The upper bar uses the neighboring-gray palette. The lower bar
   uses only black and white at the same nominal input luma for each column.
 - **Shade Sequence** sets a provisional order from dark to light. Enter
   the digits 1–6 exactly once (1/2/3 = A/B/C from black, 4/5/6 = A/B/C
@@ -377,10 +378,12 @@ WB, focus, and lighting. Keep the camera and display in the same positions.
 Include all screen edges and avoid clipping the white endpoint.
 
 **Driver calibration** is set on the ESPHome Xteink display with two optional
-YAML fields. `dither_luminance` takes six distinct 1–254 values in
-A/B/C-from-black, then A/B/C-from-white order. The driver sorts these values and
-supplies the black and white endpoints. `dither_curves` takes seven entries,
-one per adjacent pair in sorted dark-to-light order. Each entry is either an
+YAML fields. `dither_luminance` takes six entries in A/B/C-from-black, then
+A/B/C-from-white order. Active shades use distinct values from 1–254, and
+0 omits a shade from rendering while retaining its raw test swatch. The driver
+sorts the active values and supplies the black and white endpoints.
+`dither_curves` takes one entry per adjacent pair in sorted dark-to-light
+order. Each entry is either an
 empty list (linear) or 17 nondecreasing values from 0 to 255 for measured
 optical progress at coverage counts 0/16 through 16/16. Equal samples let
 visually redundant steps collapse. The renderer picks the closest measured
