@@ -416,6 +416,23 @@ select:
                                       x == "Original Zoned" ? Mode::OriginalZoned : Mode::Bayer);
 
   - platform: template
+    name: "After Zones"
+    device_id: lab_images
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: false
+    initial_option: "Off"
+    options:
+      - "Off"
+      - "Idle Wait"
+      - "Panel Hold"
+    on_value:
+      - lambda: |-
+          using Mode = ::x4render::ZoneFinish;
+          id(x4_display).set_zone_finish(x == "Panel Hold" ? Mode::Hold :
+                                        x == "Idle Wait" ? Mode::Wait : Mode::Off);
+
+  - platform: template
     name: "Cold Start"
     device_id: lab_bw
     entity_category: diagnostic
