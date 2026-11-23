@@ -543,13 +543,13 @@ text_sensor:
     device_id: lab_traces
     entity_category: diagnostic
     update_interval: 1s
-    lambda: return {id(x4_display).calibration_waveform(1, false, true)};
+    lambda: return {id(x4_display).calibration_waveform(::x4render::Row[1], false, true)};
   - platform: template
     name: "BW White Hex"
     device_id: lab_traces
     entity_category: diagnostic
     update_interval: 1s
-    lambda: return {id(x4_display).calibration_waveform(1, true, true)};
+    lambda: return {id(x4_display).calibration_waveform(::x4render::Row[1], true, true)};
   - platform: template
     name: "BW VCOM Bits"
     device_id: lab_traces
