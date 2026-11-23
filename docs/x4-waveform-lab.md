@@ -347,6 +347,15 @@ across the cold-start comparison. Source load remains a hypothesis.
 
 ## Photographing neighboring shades (v9)
 
+**Gray Tuning → White Candidates** compares A, B and C from white with pure
+white on the same scan rows. Each shade occupies every horizontal position
+once. The lower rows sweep the A/B, B/C, and C/White mixtures. This chart
+uses the candidate waveforms even when B or C is omitted from the active
+palette. The B/W load bar keeps the three-zone preparation and gray-settle
+comparison possible at Bayer, Rail Budget 96, and Local Budget 40.
+Photograph the full chart under steady illumination with exposure and
+camera position fixed. Keep an original HEIC for color-managed HDR analysis.
+
 The lab defaults reproduce the user's optically tuned preparation: Factory
 Tuned with panel power and clock, shake 1 frame per polarity × 2 pairs, White
 Ref. 5, Rest Trim +3, all other B/W trims zero and Factory Prime off. The
