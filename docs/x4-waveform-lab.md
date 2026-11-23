@@ -1,5 +1,12 @@
 # X4 waveform lab
 
+For a repeat calibration, use the pinned rendering library's
+[calibration workflow](../components/xteink/dependencies/rendering/README.md)
+and [drive-load findings](../components/xteink/dependencies/rendering/docs/drive-load.md).
+The [measured profile package](../packages/x4_pro_relative_profile_example.yaml)
+records the approved eight-shade profile and capture settings for one panel.
+The versioned sections below retain the development observations.
+
 ## Boiler preset and optical gray calibration (v19)
 
 **B-W Tuned** is the boiler's default Render Mode. It uses the boot
