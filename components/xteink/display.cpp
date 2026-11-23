@@ -671,7 +671,7 @@ bool XteinkDisplay::set_shade_sequence(const std::string& value) {
 }
 ::x4render::Palette XteinkDisplay::diagnostic_palette_() const {
   if (measured_mask_ == 63) {
-    const auto measured = ::x4render::measuredRelativePalette(measured_, coverage_);
+    const auto measured = ::x4render::RelativeGrayProfile{measured_, coverage_}.palette();
     if (measured.calibrated) return measured;
   }
   auto palette = ::x4render::provisionalRelativePalette();
