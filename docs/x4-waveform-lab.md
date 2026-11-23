@@ -194,3 +194,23 @@ production grayscale mode. Both use full-screen preparation; the gray trial
 uses full-screen selector upload/activation and preserves its B/W title/credit.
 The photo is Ansel Adams's public-domain *The Tetons - Snake River* (NARA 519904);
 the source and asset-generation details are preserved in the rendering library.
+
+
+### Factory-memory diagnostic (v6)
+
+The report that only an actual factory OTP refresh enables strong programmable
+B/W is still unresolved. Selecting OTP during PON alone did not resolve it.
+Factory Prime remains a workaround, not a verified analogue initialization fix.
+
+`capture_panel_mtp: true` (X4 Pro only) captures the first 4096 bytes using the
+controller's existing read-only RMTP command before the SPI driver starts at boot.
+It reads twice and marks the capture verified only if both streams match, the
+48-byte probe header agrees, and the refresh-enable key is A5. No programming
+command, voltage change or display refresh is part of this capture.
+
+**Waveform Export Panel Factory Memory** exports that saved boot snapshot in
+32-byte chunks, with byte offsets, a verification flag, FNV-1a checksum and an END
+marker. Pressing the button does not access the panel bus or change the screen.
+Exports pause during a calibration operation. An unverified capture is diagnostic
+raw data and must not be used to choose drive settings. A verified read still
+requires a matching controller memory map before interpreting voltage fields.

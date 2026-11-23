@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <XteinkDetect.h>
 
 #include "esphome/core/log.h"
 namespace esphome {
@@ -281,6 +282,35 @@ void XteinkDisplay::log_calibration_timing() {
     ESP_LOGI(TAG, "LABTIME t=%lu %s cmd=%02X detail=%lu poll-gap=%lu",
              (unsigned long)e.at, names[uint8_t(e.event)], e.command,
              (unsigned long)e.detail, (unsigned long)e.pollGap);
+  });
+}
+void XteinkDisplay::log_panel_mtp() {
+  if (calibration_busy()) return;
+  const auto snapshot = freeink::getXteinkPanelMtpSnapshot();
+  if (!snapshot.data || !snapshot.size) {
+    ESP_LOGW(TAG, "PANELMTP unavailable; capture_panel_mtp requires a reboot");
+    return;
+  }
+  uint32_t hash = 2166136261u;
+  for (size_t i = 0; i < snapshot.size; ++i)
+    hash = (hash ^ snapshot.data[i]) * 16777619u;
+  const auto& probe = freeink::getXteinkDisplayProbeDiag();
+  ESP_LOGI(TAG, "PANELMTP BEGIN bytes=%u verified=%u fnv1a=%08lX VER=%02X%02X%02X%02X%02X",
+           unsigned(snapshot.size), snapshot.verified, (unsigned long)hash,
+           probe.ver[0], probe.ver[1], probe.ver[2], probe.ver[3], probe.ver[4]);
+  set_interval("panel_mtp_export", 50, [this, snapshot, offset = size_t(0)]() mutable {
+    if (calibration_busy()) return;
+    if (offset == snapshot.size) {
+      ESP_LOGI(TAG, "PANELMTP END");
+      cancel_interval("panel_mtp_export");
+      return;
+    }
+    char hex[65] = {};
+    const size_t count = std::min(size_t(32), snapshot.size - offset);
+    for (size_t i = 0; i < count; ++i)
+      snprintf(hex + 2 * i, 3, "%02X", snapshot.data[offset + i]);
+    ESP_LOGI(TAG, "PANELMTP %04X %s", unsigned(offset), hex);
+    offset += count;
   });
 }
 const char* XteinkDisplay::calibration_pipeline() const {

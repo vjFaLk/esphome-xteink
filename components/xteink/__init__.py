@@ -28,6 +28,7 @@ CONF_HOLD_BATTERY_LATCH = "hold_battery_latch"
 # Compatibility option: retention is gated until the selective-wake physical
 # validation stage. The calibration firmware uses normal controller shutdown.
 CONF_RETAIN_DISPLAY_CONTROLLER = "retain_display_controller"
+CONF_CAPTURE_PANEL_MTP = "capture_panel_mtp"
 
 # model -> (esp32 variant, FreeInk device flag)
 MODELS = {
@@ -72,6 +73,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Required(CONF_MODEL): cv.one_of(*MODELS, lower=True),
         cv.Optional(CONF_HOLD_BATTERY_LATCH, default=False): cv.boolean,
         cv.Optional(CONF_RETAIN_DISPLAY_CONTROLLER, default=False): cv.boolean,
+        cv.Optional(CONF_CAPTURE_PANEL_MTP, default=False): cv.boolean,
     }
 ).extend(cv.polling_component_schema("50ms"))
 
@@ -107,6 +109,8 @@ def _final_validate(config):
         raise cv.Invalid(
             "Controller retention is gated until stage 5 physical validation; use false"
         )
+    if config[CONF_CAPTURE_PANEL_MTP] and config[CONF_MODEL] != "x4_pro":
+        raise cv.Invalid("capture_panel_mtp is supported only on x4_pro")
     return config
 
 
@@ -192,6 +196,8 @@ def _vendor_sdk() -> Path:
 
 async def to_code(config):
     cg.add_build_flag(f"-D{MODELS[config[CONF_MODEL]][1]}=1")
+    if config[CONF_CAPTURE_PANEL_MTP]:
+        cg.add_build_flag("-DFREEINK_CAPTURE_PANEL_MTP=1")
     if config[CONF_MODEL] == "x4_pro":
         # Keep the 48 KB FreeInk framebuffer out of scarce internal DMA-capable
         # RAM. allocFrameBufferStorage() still falls back to internal RAM if

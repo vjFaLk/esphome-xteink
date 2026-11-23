@@ -91,6 +91,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   std::string calibration_assignments() const;
   void log_calibration_waveforms() const;
   void log_calibration_timing();
+  void log_panel_mtp();
   void set_vertical_window(bool v) { vertical_window_ = v; }
   void set_cropped_upload(bool v) { cropped_upload_ = v; }
   void set_detailed_logging(bool v) { detailed_ = v; }

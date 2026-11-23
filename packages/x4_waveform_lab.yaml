@@ -1,5 +1,8 @@
 # Calibration package for the boiler configuration (x4_display, ds, ota_hold).
 # Raw rail semantics are experimental. No automatic repeat or boot-time drive.
+xteink:
+  capture_panel_mtp: true
+
 switch:
   - platform: template
     name: "Waveform Factory Prime On Cold Start"
@@ -89,6 +92,11 @@ button:
     entity_category: diagnostic
     on_press:
       - lambda: id(x4_display).log_calibration_timing();
+  - platform: template
+    name: "Waveform Export Panel Factory Memory"
+    entity_category: diagnostic
+    on_press:
+      - lambda: id(x4_display).log_panel_mtp();
 
   - platform: template
     name: "Waveform Clear To White"
