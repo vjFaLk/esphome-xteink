@@ -239,6 +239,17 @@ button:
       - script.wait: waveform_take_control
       - lambda: id(x4_display).show_calibration_image(12);
 
+  - platform: template
+    name: "Load Strip"
+    device_id: lab_images
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: |-
+          id(x4_display).show_calibration_image(
+              uint8_t(::x4render::TestImage::LoadStrip), uint32_t(id(lab_strip_width).state));
+
 text:
   - platform: template
     id: lab_shade_sequence
@@ -548,6 +559,19 @@ text_sensor:
     lambda: return {id(x4_display).calibration_assignments()};
 
 number:
+  - platform: template
+    id: lab_strip_width
+    name: "Strip Width"
+    device_id: lab_images
+    entity_category: diagnostic
+    min_value: 0
+    max_value: 576
+    step: 16
+    mode: box
+    optimistic: true
+    restore_value: false
+    initial_value: 320
+
   - platform: template
     name: "A Frames"
     device_id: lab_gray

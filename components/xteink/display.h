@@ -75,7 +75,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_temp_override(bool v) { temp_override_ = v; }
   void set_panel_temperature(int v) { manual_temp_c_ = v; }
   std::string calibration_temperature() const;
-  bool show_calibration_image(uint8_t image, uint32_t seed = 0);
+  bool show_calibration_image(uint8_t image, uint32_t argument = 0);
   bool repeat_calibration_image();
   std::string calibration_image() const;
   std::string calibration_waveform(uint8_t row, bool hex = false,
@@ -154,7 +154,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   bool temp_override_{false};
   int manual_temp_c_{30};
   const char* factory_error_{nullptr};
-  uint32_t last_image_seed_{0};
+  uint32_t last_image_argument_{0};
   std::array<freeink::Uc8279X4Transport::TraceEvent, 96> timing_snapshot_{};
   size_t timing_size_{0}, timing_index_{0};
   bool vertical_window_{false}, cropped_upload_{false}, detailed_{false};

@@ -1,5 +1,39 @@
 # X4 waveform lab
 
+## Measuring the switching limit (v13)
+
+Under **Test Patterns**, set **Strip Width** and then press **Load Strip**.
+The default is 320 columns. The range is 0–576 in steps of 16. This varies
+the width of a centered one-pixel checkerboard surrounded by vertical
+stripes. The two full-height black, B/W-dithered middle tone, and white
+reference groups stay fixed. Each visible row has 400 black and 400 white
+pixels. Between adjacent visible rows, half the selected columns switch
+in each direction. At 320, that is 160 changes into each rail. The hidden
+padding transition is common to all widths.
+
+1. Keep **B/W Drive**, **Cold Start**, and **Temp Source** fixed for one
+   sweep. Use **Factory Tuned** and the saved power and clock setup first.
+2. Start at **0** as a control, then try **240**, **320**, and **400**
+   columns (30%, 40%, and 50% of the width). Run **Clear White** and wait
+   for completion before each **Load Strip**. After the press, **Calibration
+   → Test Image** reports the width that was actually sent.
+3. Watch the solid white-target bands turn dark during inversion and the
+   black-target bands return dark at the end. Record the largest width that
+   consistently gives a strong, even inversion. If all three pass, try
+   480 and 576. If 240 fails, try 160. Repeat the two widths that bracket a
+   change and narrow the gap in 16-column steps.
+4. If desired, repeat the bracket with **Factory OTP** and **Legacy Setup**.
+   Exit calibration and re-enter before the first factory trial to start
+   from a controller reset. Treat each drive mode's threshold separately.
+
+The experiment uses a full B/W refresh and varies the bitmap only. The
+balanced strip shares its switching evenly between the rails. For real
+images, count the changes into each rail separately and weight them by the
+waveform's voltage swing. An unbalanced line can put all its changes on one
+rail, so a passing balanced width is a per-rail count of half that width.
+The separately driven update regions still need their own validation.
+
+
 ## Comparing source switching loads (v12)
 
 **Test Patterns → V Stripes** and **Checkerboard** both use one complete
