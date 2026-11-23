@@ -38,7 +38,9 @@ class XteinkDisplay : public display::DisplayBuffer {
     stable_luminance_[i] = luma;
   }
   void postpone_grayscale_settle() {}
-  void prepare_page_change() { force_full_ = true; }
+  void prepare_page_change();
+  void begin_touch_preview();
+  void end_touch_preview();
   void begin_virtual_update() { virtual_ = true; }
   void end_virtual_update(bool refresh = false) {
     virtual_ = false;
@@ -177,7 +179,9 @@ class XteinkDisplay : public display::DisplayBuffer {
   bool finish_normal_(bool wait);
   bool acquire_controller_(bool for_lab = true);
   bool begin_tuned_bw_();
-  bool begin_gray_(bool force);
+  bool begin_gray_(bool force, bool preview);
+  void schedule_touch_settle_();
+  void reset_touch_preview_();
   bool gray_mode_() const { return requested_mode_ == 1 || requested_mode_ == 2; }
   void paint_demo_();
   bool poll_tuned_bw_();
@@ -199,6 +203,9 @@ class XteinkDisplay : public display::DisplayBuffer {
   TunedState tuned_state_{TunedState::Idle};
   bool tuned_completed_{false};
   bool gray_driving_{false}, redraw_requested_{false};
+  enum class TouchPhase : uint8_t { Idle, Dragging, Released };
+  TouchPhase touch_phase_{TouchPhase::Idle};
+  bool driving_touch_preview_{false};
   bool render_demo_{false}, render_demo_marker_{false};
   const char* gray_result_{"idle"};
   uint32_t gray_started_{0}, gray_duration_{0}, gray_bytes_{0};
@@ -209,10 +216,10 @@ class XteinkDisplay : public display::DisplayBuffer {
   uint8_t bw_column_strength_{100}, bw_repair_strength_{100};
   uint8_t bw_column_grain_{0}, bw_burst_headroom_{0};
   uint8_t bw_local_budget_{40};
-  uint16_t bw_rail_budget_{160};
-  ::x4render::GrayDither gray_dither_{::x4render::GrayDither::Columns};
-  ::x4render::ZoneFinish zone_finish_{::x4render::ZoneFinish::Off};
-  bool zone_gray_settle_{false};
+  uint16_t bw_rail_budget_{96};
+  ::x4render::GrayDither gray_dither_{::x4render::GrayDither::Bayer};
+  ::x4render::ZoneFinish zone_finish_{::x4render::ZoneFinish::Hold};
+  bool zone_gray_settle_{true};
   bool bw_split_guard_{true};
   bool temp_override_{false};
   int manual_temp_c_{30};
