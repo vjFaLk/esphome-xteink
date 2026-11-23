@@ -71,6 +71,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_bw_column_grain(uint8_t value) { bw_column_grain_ = value; }
   void set_bw_burst_headroom(uint8_t value) { bw_burst_headroom_ = value; }
   void set_bw_split_guard(bool value) { bw_split_guard_ = value; }
+  void set_bw_local_budget(uint8_t value) { bw_local_budget_ = value; }
   void set_bw_activation_frames(uint8_t v) { bw_tuning_.shakeFrames = v; }
   void set_bw_activation_cycles(uint8_t v) { bw_tuning_.shakeCycles = v; }
   void set_bw_reference_frames(uint8_t v) { bw_tuning_.whiteReference = v; }
@@ -86,6 +87,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   std::string calibration_image() const;
   std::string calibration_bw_load() const;
   std::string calibration_bw_charge() const;
+  std::string calibration_bw_zones() const;
   std::string calibration_waveform(uint8_t row, bool hex = false,
                                    bool preparation = false) const;
   std::string calibration_assignments() const;
@@ -162,6 +164,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   ::x4render::BwTexture bw_texture_{::x4render::BwTexture::Bayer};
   uint8_t bw_column_strength_{100}, bw_repair_strength_{100};
   uint8_t bw_column_grain_{0}, bw_burst_headroom_{0};
+  uint8_t bw_local_budget_{40};
   bool bw_split_guard_{true};
   bool temp_override_{false};
   int manual_temp_c_{30};

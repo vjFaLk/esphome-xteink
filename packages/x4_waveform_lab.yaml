@@ -407,11 +407,13 @@ select:
       - "Bayer"
       - "Column Stable"
       - "Row Repair"
+      - "Original Zoned"
     on_value:
       - lambda: |-
           using Mode = ::x4render::BwTexture;
           id(x4_display).set_bw_texture(x == "Column Stable" ? Mode::Columns :
-                                      x == "Row Repair" ? Mode::Repair : Mode::Bayer);
+                                      x == "Row Repair" ? Mode::Repair :
+                                      x == "Original Zoned" ? Mode::OriginalZoned : Mode::Bayer);
 
   - platform: template
     name: "Cold Start"
@@ -515,6 +517,13 @@ text_sensor:
     entity_category: diagnostic
     update_interval: 1s
     lambda: return {id(x4_display).calibration_bw_charge()};
+
+  - platform: template
+    name: "Zone Plan"
+    device_id: lab_images
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: return {id(x4_display).calibration_bw_zones()};
 
   - platform: template
     name: "Factory Table"
@@ -662,6 +671,20 @@ text_sensor:
     lambda: return {id(x4_display).calibration_assignments()};
 
 number:
+  - platform: template
+    name: "Local Budget"
+    device_id: lab_images
+    entity_category: diagnostic
+    min_value: 20
+    max_value: 64
+    step: 2
+    mode: box
+    optimistic: true
+    restore_value: false
+    initial_value: 40
+    set_action:
+      - lambda: id(x4_display).set_bw_local_budget(uint8_t(x));
+
   - platform: template
     name: "Column Grain"
     device_id: lab_images

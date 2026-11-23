@@ -220,6 +220,7 @@ bool XteinkDisplay::configure_lab_() {
   lab_->repairStrength = bw_repair_strength_;
   lab_->columnGrain = bw_column_grain_;
   lab_->burstHeadroom = bw_burst_headroom_;
+  lab_->bwLocalBudget = bw_local_budget_;
   lab_->bwSplitGuard = bw_split_guard_;
   lab_->verticalWindowValidated = vertical_window_;
   lab_->croppedUploadValidated = cropped_upload_;
@@ -259,15 +260,18 @@ std::string XteinkDisplay::calibration_image() const {
     std::string value = lab_->image() == T::BwPhoto ? "B/W photo" :
                         lab_->image() == T::BwChecker ? "B/W checker" : "B/W boiler";
     const auto mode = lab_->renderedBwTexture();
-    value += mode == M::Columns ? "; column stable" : mode == M::Repair ? "; row repair" : "; Bayer";
-    if (mode != M::Bayer && lab_->bwStrength() < 100)
+    value += mode == M::Columns ? "; column stable" : mode == M::Repair ? "; row repair" :
+             mode == M::OriginalZoned ? "; original zoned" : "; Bayer";
+    const bool textured = mode == M::Columns || mode == M::Repair;
+    if (textured && lab_->bwStrength() < 100)
       value += " " + std::to_string(lab_->bwStrength()) + "%";
     if (mode == M::Columns && lab_->columnGrain)
       value += "; grain " + std::to_string(lab_->columnGrain) + "%";
-    if (mode != M::Bayer && lab_->burstHeadroom)
+    if (mode == M::Repair && lab_->burstHeadroom)
       value += "; headroom " + std::to_string(lab_->burstHeadroom);
     if (lab_->protectedFallback()) value += " (protected edges)";
     if (lab_->stripCount()) value += "; " + std::to_string(lab_->stripCount()) + " strips";
+    if (lab_->zonePlan().count > 1) value += "; " + std::to_string(lab_->zonePlan().count) + " zones";
     return value;
   }
   const char* names[] = {"calibration", "white", "black", "known reference", "random edges",
@@ -298,6 +302,16 @@ std::string XteinkDisplay::calibration_bw_charge() const {
                 unsigned(q.both), unsigned(q.one), unsigned(q.boundary), unsigned(q.recent),
                 unsigned(q.sustained), static_cast<unsigned long long>(q.total[0]),
                 static_cast<unsigned long long>(q.total[1]));
+  return value;
+}
+std::string XteinkDisplay::calibration_bw_zones() const {
+  if (!lab_ || !lab_->zoneRequested()) return "No zoned plan requested";
+  const auto& plan = lab_->zonePlan();
+  if (!plan.count) return "Over budget with three zones";
+  char value[120];
+  std::snprintf(value, sizeof(value), "%u pass%s, %u px lanes | rail %u, local 8/32 %u/%u",
+                unsigned(plan.count), plan.count == 1 ? "" : "es", unsigned(plan.laneWidth ? plan.laneWidth : 800),
+                unsigned(plan.wholeRecent), unsigned(plan.localRecent), unsigned(plan.localSustained));
   return value;
 }
 void XteinkDisplay::end_calibration() {

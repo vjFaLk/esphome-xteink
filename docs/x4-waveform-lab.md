@@ -1,5 +1,43 @@
 # X4 waveform lab
 
+## Using at most three B/W zones (v18)
+
+The user reported that Staggered drove well, Jittered still struggled,
+and the unsplit boiler image looked good. The former guard split a
+boiler snapshot into 20 passes because its sharpest edge jumped by 694
+pixels into one rail. The local recent score was only 16. A fixed peak
+limit and a cap on the physical width of each strip drove that decision.
+
+The preview guard now tries one full pass first, then two or three
+interleaved zones if the sustained scores exceed the budget. Each zone
+owns fixed 8- or 16-pixel column groups across the screen. Every pass
+uses full addressing and the existing hold selector outside its zone.
+The selected bitmap is preserved exactly. A frame that cannot meet the
+budget in three zones is held on the previous image and reports an
+over-budget result. The explicit Split Checkerboard diagnostic keeps
+its original controlled strip experiment.
+
+- **Rail Budget** is the whole-rail 8-row recovery limit for the planner.
+  The Row Repair kernel still uses it to shape the bitmap. Its **Burst
+  Headroom** is applied during that shaping stage.
+- **Local Budget** is the 8-row limit in each 128-column span. The
+  32-row limit is 80% of that value. The default is 40/32, a trial
+  starting point informed by the matched-pattern tests. The planner
+  reports the worst score across all accepted passes in **Zone Plan**.
+  The peak count remains visible as a diagnostic.
+- **Original Zoned** uses the original Bayer bits with this planner.
+  For low-strength repair, use **Row Repair** with your current settings
+  and **Split if Needed** on. The Bayer control continues to use one
+  full pass for direct comparison.
+
+Start with **B/W Boiler** under **Original Zoned**, then compare low
+Row Repair or Column Stable using the same snapshot. **Zone Plan** should
+show the planned pass count and load. Try **B/W Checker** to see the
+three-zone behavior. Watch for uniform inversion and any fine repeating
+pattern at the zone boundaries. The load scores are a model, and optical
+hold across interleaved zones still needs the panel comparison.
+
+
 ## Testing randomized switch timing (v17)
 
 The user reported better inversion with **1 On / 1 Off** than **8 On /
@@ -37,9 +75,9 @@ let more pairs vary and may increase switching.
 **Burst Headroom** lets Row Repair borrow that many extra switches into
 either rail, measured separately. A row under the regular Rail Budget
 replenishes its rail's credit. A run above budget spends credit until the
-normal limit applies. The split guard checks the same credit rule when
-allowing any rendered image above the usual peak. The local load limits
-still apply. A trial of Rail Budget 160 and Headroom 40 accepts the modeled
+normal limit applies. In v17 the split guard also used that credit rule.
+The v18 guard uses the separate recovery budgets above. A trial of
+Rail Budget 160 and Headroom 40 accepts the modeled
 400-column 1-on/1-off schedule, while an eight-row burst exhausts the
 allowance. Start from Headroom 0 and compare optically and acoustically.
 At full Repair Strength the limiter enforces this model. Both new controls
