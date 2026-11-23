@@ -214,3 +214,57 @@ marker. Pressing the button does not access the panel bus or change the screen.
 Exports pause during a calibration operation. An unverified capture is diagnostic
 raw data and must not be used to choose drive settings. A verified read still
 requires a matching controller memory map before interpreting voltage fields.
+
+
+### Cold-start power setup A/B (v7)
+
+The previous setup's cold programmable B/W remains optically unsuccessful; only
+an actual factory OTP refresh has been confirmed to make it work. The v5
+OTP-selection-during-PON change and DTM corrections did not remove that
+requirement. No successful software command count is evidence of optical clearing.
+
+The v6 diagnostic obtained two identical full 4096-byte RMTP reads from this unit
+(VER `00 0F 68 00 00`), matching the probe header and export checksum. Eight
+populated temperature tables begin at 0x33 with stride 0x121. Their boundaries are
+5, 10, 15, 20, 80, 95, 100, 127. The existing forced temperature of 30 selects
+range 4, at 0x4B7, whose nine-byte prefix is `09 00 78 78 14 24 00 00 00`.
+
+The interpretation of that prefix is experimental. Its shape agrees with the
+X4 vendor external blob; the PWR/VDCS payload layout and full-drive enable byte
+0x43 follow the SDK's recovered UC8279 initializer. These are opaque register
+codes, not measured rail voltages. The implementation accepts only this observed
+module signature, memory shape and values; unfamiliar/unverified data disables the
+experiment. No voltage sweep or user-entered raw power values are provided.
+
+**Waveform Cold Start Power Setup** has three choices:
+
+| Choice | Behavior | Desired / expected diagnostic effect |
+|---|---|---|
+| Legacy Setup | Existing startup, no explicit PWR/VDCS/BTST writes; custom PLL 0E | Reproduces the cold-start weakness as the control. An actual OTP prime can still warm it. |
+| Panel Power - Experimental | Before PON, write PWR `43 00 78 78 14`, VDCS `24`, BTST `25 25 3C`; keep custom PLL `0E`; use external-LUT mode for PON | Tests whether supplying the missing analogue setup restores black/white saturation without an OTP refresh. Keeping the clock and pulse counts unchanged reduces one source of ambiguity. If successful, transitions should become stronger, pure clears should approach full endpoints, and the prior image should stop blending through. Noise can change too. |
+| Panel Power And Clock - Experimental | Same explicit power setup, plus PLL `09` from the apparent factory table header, reasserted after PON and before refresh | Adds a clock comparison. The duration/energy of a counted frame can change, so the same frame count can give different contrast, noise and total duration. Exact Hz and the direction of the duration change have not been measured on this controller. |
+
+The selector changes only the next OFF-to-PON startup. It never changes voltage
+or clock underneath a powered waveform. **Waveform Applied Power Setup** reports
+the latched setup and its raw payload, or that a selection is pending/rejected.
+The default is Legacy Setup on each reboot. Power setup and factory priming are
+independent controls; priming can hide whether the explicit setup fixed cold start.
+
+For a useful comparison:
+
+1. Keep the current B/W timing and conditioning controls fixed. Set **Factory
+   Prime On Cold Start OFF**.
+2. Select **Panel Power - Experimental**. Exit calibration, wait for exit to
+   finish, and enter it again. This resets the controller and removes the warm
+   factory state. Verify Applied Power Setup after the next operation.
+3. Show the known image, then clear white and clear black. Report whether each
+   reaches its endpoint, whether old edges remain, and whether noise changes.
+4. Repeat the exit/re-enter sequence with **Panel Power And Clock - Experimental**.
+   Keep the frame counts unchanged for this first clock comparison; record
+   refresh duration alongside appearance.
+5. For the control, repeat with Legacy Setup, still with priming OFF. If needed,
+   re-enable Factory Prime to return to the already-working test path.
+
+Do not treat changing the selector in a warm session as a cold-start test. Do not
+select Factory OTP between entering calibration and running the programmable
+comparison. Physical confirmation is still required for both new setup choices.
