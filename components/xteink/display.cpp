@@ -152,7 +152,7 @@ bool XteinkDisplay::begin_calibration() {
   }
   transport_->clearTrace();
   transport_->reset();
-  set_panel_power_setup(panel_power_setup_);
+  factory_error_ = nullptr;
   lab_->invalidate();
   calibration_active_ = true;
   exit_requested_ = false;
@@ -180,22 +180,43 @@ bool XteinkDisplay::run_calibration(bool rebuild, bool rotate,
       return false;
     }
   }
-  configure_lab_();
+  if (!configure_lab_()) return false;
   return lab_->start(millis(), rebuild, rotate, conditioning);
 }
-void XteinkDisplay::configure_lab_() {
+bool XteinkDisplay::configure_lab_() {
+  factory_error_ = nullptr;
+  const auto snapshot = freeink::getXteinkPanelMtpSnapshot();
+  const auto temp = factory_temperature_();
+  const auto profile = freeink::observedX4FactoryProfile(
+      snapshot.data, snapshot.size, snapshot.verified,
+      freeink::getXteinkDisplayProbeDiag().ver[2], temp);
+  lab_->factoryDerivedBw.reset();
+  if (bw_mode_) {
+    ::x4render::LutBank rows;
+    const auto tuning = bw_mode_ == 2 ? bw_tuning_ : ::x4render::FactoryBwTuning{};
+    if (!profile.power.valid || !::x4render::tuneFactoryBw(profile.rows, tuning, rows)) {
+      factory_error_ = "Factory table unavailable or unsupported";
+      ESP_LOGW(TAG, "%s at %d C", factory_error_, temp);
+      return false;
+    }
+    lab_->factoryDerivedBw = rows;
+  }
+  transport_->setPanelPower(profile.power, panel_power_setup_);
+  transport_->setCalibrationTemperature(temp);
   for (uint8_t i = 0; i < 3; ++i)
     lab_->parameters[i] = {pulse_rail_, candidate_frames_[i], pulse_opposite_,
                            pulse_repeats_, pulse_neutral_};
   lab_->holdRail = hold_rail_;
   lab_->bwPreparation = bw_preparation_;
+  lab_->bwPreparation.programmable = bw_mode_ != 0;
   lab_->verticalWindowValidated = vertical_window_;
   lab_->croppedUploadValidated = cropped_upload_;
+  return true;
 }
 bool XteinkDisplay::show_calibration_image(uint8_t image, uint32_t seed) {
   if (!calibration_active_ || lab_->busy() || exit_requested_ ||
       image < 1 || image > 6) return false;
-  configure_lab_();
+  if (!configure_lab_()) return false;
   if (!lab_->startImage(millis(), ::x4render::TestImage(image), seed)) return false;
   last_test_image_ = image;
   last_image_seed_ = seed;
@@ -287,14 +308,29 @@ void XteinkDisplay::log_calibration_timing() {
 }
 void XteinkDisplay::set_panel_power_setup(uint8_t value) {
   panel_power_setup_ = value <= 2 ? value : 0;
-  if (!transport_) return;
+}
+int XteinkDisplay::factory_temperature_() const {
   const auto snapshot = freeink::getXteinkPanelMtpSnapshot();
-  const auto profile = freeink::observedX4PanelPower(
+  if (temp_override_) return manual_temp_c_;
+  return snapshot.temperatureC != -128 ? snapshot.temperatureC : 30;
+}
+std::string XteinkDisplay::calibration_temperature() const {
+  const auto snapshot = freeink::getXteinkPanelMtpSnapshot();
+  const int temp = factory_temperature_();
+  const auto profile = freeink::observedX4FactoryProfile(
       snapshot.data, snapshot.size, snapshot.verified,
-      freeink::getXteinkDisplayProbeDiag().ver[2]);
-  transport_->setPanelPower(profile, panel_power_setup_);
-  if (panel_power_setup_ && !profile.valid)
-    ESP_LOGW(TAG, "Panel power experiment unavailable: factory snapshot/profile mismatch");
+      freeink::getXteinkDisplayProbeDiag().ver[2], temp);
+  const char* source = temp_override_ ? "Manual" :
+      snapshot.temperatureC != -128 ? "Boot TSC" : "Fallback";
+  char status[100];
+  if (profile.power.valid)
+    std::snprintf(status, sizeof(status), "%s %d C, table %u (<=%d C), TSC %02X %02X",
+                  source, temp, unsigned(profile.range + 1), profile.upperC,
+                  snapshot.temperatureRaw[0], snapshot.temperatureRaw[1]);
+  else
+    std::snprintf(status, sizeof(status), "%s %d C, no supported table, TSC %02X %02X",
+                  source, temp, snapshot.temperatureRaw[0], snapshot.temperatureRaw[1]);
+  return status;
 }
 std::string XteinkDisplay::panel_power_setup_status() const {
   if (!transport_) return "Not powered in calibration; selection applies at next PON";
@@ -302,7 +338,7 @@ std::string XteinkDisplay::panel_power_setup_status() const {
   if (mode != panel_power_setup_)
     return "Selection pending or profile rejected; turn pumps off or exit/re-enter calibration";
   if (!mode) return "Legacy setup; no explicit PWR/VDCS/BTST";
-  return std::string("EXPERIMENT PWR=4300787814 VDCS=24 BTST=25253C PLL=") +
+  return std::string("PWR=4300787814 VDCS=24 BTST=25253C PLL=") +
          (mode == 2 ? "09" : "0E");
 }
 void XteinkDisplay::log_panel_mtp() {

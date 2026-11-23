@@ -245,7 +245,7 @@ select:
     entity_category: diagnostic
     optimistic: true
     restore_value: false
-    initial_option: "Legacy Setup"
+    initial_option: "Panel Power And Clock - Experimental"
     options:
       - "Legacy Setup"
       - "Panel Power - Experimental"
@@ -275,15 +275,27 @@ select:
     entity_category: diagnostic
     optimistic: true
     restore_value: false
-    initial_option: "Conditioned B-W Drive"
+    initial_option: "Factory Replay"
     options:
       - "Factory OTP"
-      - "Programmable B-W Drive"
-      - "Conditioned B-W Drive"
+      - "Factory Replay"
+      - "Factory Tuned"
     on_value:
       - lambda: |-
-          id(x4_display).set_bw_preparation(x != "Factory OTP");
-          id(x4_display).set_bw_conditioned(x == "Conditioned B-W Drive");
+          id(x4_display).set_bw_mode(x == "Factory OTP" ? 0 : x == "Factory Replay" ? 1 : 2);
+
+  - platform: template
+    name: "Temp Source"
+    device_id: lab_bw
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: false
+    initial_option: "Boot Sample"
+    options:
+      - "Boot Sample"
+      - "Manual"
+    on_value:
+      - lambda: id(x4_display).set_temp_override(x == "Manual");
 
 sensor:
   - platform: template
@@ -316,6 +328,12 @@ sensor:
     update_interval: 1s
     lambda: return id(x4_display).calibration_cycles();
 text_sensor:
+  - platform: template
+    name: "Factory Table"
+    device_id: lab_bw
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: return {id(x4_display).calibration_temperature()};
   - platform: template
     name: "Applied Power"
     device_id: lab_bw
@@ -613,41 +631,42 @@ number:
     set_action:
       - lambda: id(x4_display).set_measured_shade(5, x);
   - platform: template
-    name: "Target Frames"
+    name: "Manual Temp"
     device_id: lab_bw
     entity_category: diagnostic
+    unit_of_measurement: "°C"
     optimistic: true
     restore_value: false
-    min_value: 1
-    max_value: 63
+    min_value: -25
+    max_value: 50
     step: 1
-    initial_value: 20
+    initial_value: 30
     on_value:
-      - lambda: id(x4_display).set_bw_frames(x);
+      - lambda: id(x4_display).set_panel_temperature(x);
   - platform: template
-    name: "Drive Repeats"
+    name: "Drive Trim"
     device_id: lab_bw
     entity_category: diagnostic
     optimistic: true
     restore_value: false
-    min_value: 1
-    max_value: 16
+    min_value: -8
+    max_value: 8
     step: 1
-    initial_value: 1
+    initial_value: 0
     on_value:
-      - lambda: id(x4_display).set_bw_repeats(x);
+      - lambda: id(x4_display).set_bw_drive_trim(x);
   - platform: template
-    name: "Inverse Frames"
+    name: "Rest Trim"
     device_id: lab_bw
     entity_category: diagnostic
     optimistic: true
     restore_value: false
-    min_value: 0
-    max_value: 63
+    min_value: -4
+    max_value: 8
     step: 1
-    initial_value: 20
+    initial_value: 0
     on_value:
-      - lambda: id(x4_display).set_bw_inversion_frames(x);
+      - lambda: id(x4_display).set_bw_pause_trim(x);
   - platform: template
     name: "Shake Frames"
     device_id: lab_bw
@@ -657,7 +676,7 @@ number:
     min_value: 0
     max_value: 8
     step: 1
-    initial_value: 2
+    initial_value: 0
     on_value:
       - lambda: id(x4_display).set_bw_activation_frames(x);
   - platform: template
@@ -679,71 +698,11 @@ number:
     optimistic: true
     restore_value: false
     min_value: 0
-    max_value: 63
+    max_value: 32
     step: 1
     initial_value: 0
     on_value:
       - lambda: id(x4_display).set_bw_reference_frames(x);
-  - platform: template
-    name: "Rest Frames"
-    device_id: lab_bw
-    entity_category: diagnostic
-    optimistic: true
-    restore_value: false
-    min_value: 0
-    max_value: 16
-    step: 1
-    initial_value: 3
-    on_value:
-      - lambda: id(x4_display).set_bw_rest_frames(x);
-  - platform: template
-    name: "Tail Frames"
-    device_id: lab_bw
-    entity_category: diagnostic
-    optimistic: true
-    restore_value: false
-    min_value: 0
-    max_value: 16
-    step: 1
-    initial_value: 3
-    on_value:
-      - lambda: id(x4_display).set_bw_tail_frames(x);
-  - platform: template
-    name: "White Target"
-    device_id: lab_bw
-    entity_category: diagnostic
-    optimistic: true
-    restore_value: false
-    min_value: 0
-    max_value: 63
-    step: 1
-    initial_value: 0
-    on_value:
-      - lambda: id(x4_display).set_bw_white_frames(x);
-  - platform: template
-    name: "Rest Code"
-    device_id: lab_bw
-    entity_category: diagnostic
-    optimistic: true
-    restore_value: false
-    min_value: 0
-    max_value: 3
-    step: 1
-    initial_value: 0
-    on_value:
-      - lambda: id(x4_display).set_bw_rest_rail(x);
-  - platform: template
-    name: "VCOM Code"
-    device_id: lab_bw
-    entity_category: diagnostic
-    optimistic: true
-    restore_value: false
-    min_value: 0
-    max_value: 3
-    step: 1
-    initial_value: 0
-    on_value:
-      - lambda: id(x4_display).set_bw_vcom_rail(x);
   - platform: template
     name: "Pause (ms)"
     device_id: lab_bw

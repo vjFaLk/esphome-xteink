@@ -64,28 +64,20 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_pulse_repeats(uint8_t value) { pulse_repeats_ = value; }
   void set_pulse_neutral(uint8_t value) { pulse_neutral_ = value; }
   void set_hold_rail(uint8_t value) { hold_rail_ = value; }
-  void set_bw_preparation(bool programmable) {
-    bw_preparation_.programmable = programmable;
-  }
-  void set_bw_conditioned(bool value) { bw_preparation_.conditioned = value; }
-  void set_bw_activation_frames(uint8_t v) { bw_preparation_.activationFrames = v; }
-  void set_bw_activation_cycles(uint8_t v) { bw_preparation_.activationCycles = v; }
-  void set_bw_reference_frames(uint8_t v) { bw_preparation_.referenceFrames = v; }
-  void set_bw_rest_frames(uint8_t v) { bw_preparation_.restFrames = v; }
-  void set_bw_tail_frames(uint8_t v) { bw_preparation_.tailFrames = v; }
-  void set_bw_white_frames(uint8_t v) { bw_preparation_.whiteFrames = v; }
-  void set_bw_rest_rail(uint8_t v) { bw_preparation_.restRail = v; }
-  void set_bw_vcom_rail(uint8_t v) { bw_preparation_.vcomRail = v; }
+  void set_bw_mode(uint8_t mode) { bw_mode_ = mode; }
+  void set_bw_activation_frames(uint8_t v) { bw_tuning_.shakeFrames = v; }
+  void set_bw_activation_cycles(uint8_t v) { bw_tuning_.shakeCycles = v; }
+  void set_bw_reference_frames(uint8_t v) { bw_tuning_.whiteReference = v; }
+  void set_bw_drive_trim(int8_t v) { bw_tuning_.driveTrim = v; }
+  void set_bw_pause_trim(int8_t v) { bw_tuning_.pauseTrim = v; }
   void set_bw_pause(uint16_t v) { bw_preparation_.pauseMs = v; }
   void set_bw_factory_prime(bool v) { bw_preparation_.factoryPrime = v; }
+  void set_temp_override(bool v) { temp_override_ = v; }
+  void set_panel_temperature(int v) { manual_temp_c_ = v; }
+  std::string calibration_temperature() const;
   bool show_calibration_image(uint8_t image, uint32_t seed = 0);
   bool repeat_calibration_image();
   std::string calibration_image() const;
-  void set_bw_frames(uint8_t value) { bw_preparation_.frames = value; }
-  void set_bw_inversion_frames(uint8_t value) {
-    bw_preparation_.inversionFrames = value;
-  }
-  void set_bw_repeats(uint8_t value) { bw_preparation_.repeats = value; }
   std::string calibration_waveform(uint8_t row, bool hex = false,
                                    bool preparation = false) const;
   std::string calibration_assignments() const;
@@ -98,7 +90,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_cropped_upload(bool v) { cropped_upload_ = v; }
   void set_detailed_logging(bool v) { detailed_ = v; }
   const char* calibration_result() const {
-    return lab_ ? lab_->result() : "idle";
+    return factory_error_ ? factory_error_ : lab_ ? lab_->result() : "idle";
   }
   uint32_t calibration_duration() const { return lab_ ? lab_->duration : 0; }
   uint32_t calibration_bytes() const {
@@ -138,7 +130,8 @@ class XteinkDisplay : public display::DisplayBuffer {
 
  protected:
   bool finish_normal_(bool wait);
-  void configure_lab_();
+  bool configure_lab_();
+  int factory_temperature_() const;
   Xteink* parent_{nullptr};
   optional<xteink_writer_t> writer_{};
   ::x4render::Frames frames_;
@@ -150,7 +143,10 @@ class XteinkDisplay : public display::DisplayBuffer {
       calibration_active_{false}, exit_requested_{false};
   bool exit_shutdown_attempted_{false}, exit_failed_{false};
   uint8_t last_test_image_{3};
-  uint8_t panel_power_setup_{0};
+  uint8_t panel_power_setup_{2}, bw_mode_{1};
+  bool temp_override_{false};
+  int manual_temp_c_{30};
+  const char* factory_error_{nullptr};
   uint32_t last_image_seed_{0};
   std::array<freeink::Uc8279X4Transport::TraceEvent, 96> timing_snapshot_{};
   size_t timing_size_{0}, timing_index_{0};
@@ -158,6 +154,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   int refresh_mode_{HALF_REFRESH}, requested_mode_{0};
   uint32_t full_every_{0}, partials_{0};
   ::x4render::BwPreparation bw_preparation_{};
+  ::x4render::FactoryBwTuning bw_tuning_{};
   std::array<uint8_t, 6> measured_{};
   uint8_t measured_mask_{0};
   uint8_t candidate_frames_[3]{2, 4, 6}, pulse_rail_{2}, pulse_opposite_{0},
