@@ -1,5 +1,36 @@
 # X4 waveform lab
 
+## Comparing source switching loads (v11)
+
+**Test Patterns → V Stripes** and **Checkerboard** both use one complete
+B/W refresh with the selected B/W Drive. Both have 400 black and 400 white
+pixels on every visible line, with one-pixel alternation across the row.
+V Stripes repeats the row. Checkerboard complements every other row. Away
+from the borders this changes the number of switching source lines from
+0 to 800 between successive scan rows. Both keep the same hidden-gate fill.
+
+Run both under the tuned preset first. If a common optical baseline is
+needed, press Clear White before each pattern. Look for broad bands or
+streaks, including after BUSY completes. The intended 1-pixel patterns
+can alias in a camera image, so a repeatable visible band is more useful
+than a change in fine texture.
+
+To compare the controller's factory waveform, set **B/W Drive → Factory
+OTP** and **Cold Start → Legacy Setup**. Exit calibration, wait for
+release, then re-enter or press one of the test buttons to reacquire it.
+This resets the controller and avoids running the OTP comparison on pumps
+already configured by the programmable power option. Run the same two
+buttons. Restore **Factory Tuned** and **Panel Power And Clock** and again
+exit/re-enter to return to the saved baseline.
+
+A scan-line count can be derived from XOR and popcount once this comparison
+shows whether switching activity affects the defect. Reducing the number of
+rows per update shortens the burst but does not bound the maximum number of
+sources switching in any line. A per-line bound would require limiting the
+participating columns, with full-line addressing and the existing window
+constraints still under consideration.
+
+
 ## Checking Linear Ramp inversion (v10)
 
 **Ramp Base** shows the exact B/W preparation target for Linear Ramp, including
