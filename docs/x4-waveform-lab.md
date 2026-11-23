@@ -5,6 +5,16 @@ Optical improvement and the reported re-entry failure still need physical
 confirmation. Candidate gray parameters and the production boiler layout are
 preserved. The single-settle modes remain gated pending measured calibration.
 
+In Home Assistant, the controls are grouped into five ESPHome sub-devices.
+**Calibration** owns the session and shows its status. **B/W Setup** contains
+power and B/W preparation. **Gray Tuning** contains the chart, candidate
+controls and measurements. **Test Patterns** holds the clears and images.
+**Waveform Data** contains waveform readouts and exports.
+
+This migration changes the IDs of the lab-only entities. Update any dashboard
+or automation that references an earlier lab entity. The original boiler
+entities keep their names and device assignment.
+
 ## Deterministic ownership
 
 Acquisition drains the normal driver's refresh and asks that driver to power down
@@ -15,7 +25,7 @@ the controller, sets geometry, invalidates all reference/snapshot assumptions,
 and reconstructs both planes for its first image. Exiting waits for the active
 job and confirmed power-off before resetting the ordinary driver. A shutdown
 failure retains calibration ownership and the paused normal UI. Fault recovery
-does not automatically reset a possibly powered controller: use Power Off Pumps
+does not automatically reset a possibly powered controller: use Pumps Off
 and retry; unresolved power-state failures require hardware recovery.
 
 Full B/W external-LUT preparation and OTP now share CDI=97, PLL=0E, E1=02,
@@ -26,7 +36,7 @@ another panel; the path continues to use this module's programmed defaults.
 
 ## Modes and recipe
 
-`Waveform B-W Preparation` has three choices:
+`B/W Drive` has three choices:
 
 * Factory OTP: runs the panel's full B/W waveform, whose payload is unavailable.
 * Programmable B-W Drive: original inversion -> target -> one hold count;
@@ -67,20 +77,20 @@ B/W inversion/target=20/20, repeat=1. Conditioned preparation is selected, with
 factory priming OFF. Export/save experimental changes before reboot; they are
 kept across exit/re-entry without reboot. No device NVS erase is performed.
 
-| Control (Waveform B-W prefix) | Default/range | Applies to | Expected effect |
+| Control in B/W Setup | Default/range | Applies to | Expected effect |
 |---|---|---|---|
-| Frames | 20; 1–63 | both programmable | Target drive length. More can strengthen incomplete endpoints; excess can worsen texture/drift. The observed useful region is about 15–30 on this unit, not a newly enforced limit. |
-| Inversion Frames | 20; 0–63 | both programmable | Longer complementary endpoint drive. In conditioned mode the first black-target interval holds when a white reference is enabled. Zero skips inversion; it is an experiment, not an equivalent reset. |
-| Repeats | 1; 1–16 | both programmable | Repeats inversion/target/ending cycle. Activation/reference run once. More increases duration and dose; try 1 before increasing. |
-| Activation Frames | 2; 0–8 | conditioned | Width of each dark/light activation pulse. Zero disables activation. Longer may reduce retained-state dependence but adds excursions and may worsen noise. |
-| Activation Cycles | 2; 0–4 | conditioned | Number of dark/light pairs. Zero disables activation; higher increases conditioning and flicker. |
-| Reference Frames | 0; 0–63 | conditioned | Optional common white drive before the image. Higher may make the reference more reproducible, but adds an asymmetric dose and may worsen texture/drift. Disabled by default; try separately from activation. |
+| Target Frames | 20; 1–63 | both programmable | Target drive length. More can strengthen incomplete endpoints; excess can worsen texture/drift. The observed useful region is about 15–30 on this unit, not a newly enforced limit. |
+| Inverse Frames | 20; 0–63 | both programmable | Longer complementary endpoint drive. In conditioned mode the first black-target interval holds when a white reference is enabled. Zero skips inversion; it is an experiment, not an equivalent reset. |
+| Drive Repeats | 1; 1–16 | both programmable | Repeats inversion/target/ending cycle. Activation/reference run once. More increases duration and dose; try 1 before increasing. |
+| Shake Frames | 2; 0–8 | conditioned | Width of each dark/light activation pulse. Zero disables activation. Longer may reduce retained-state dependence but adds excursions and may worsen noise. |
+| Shake Cycles | 2; 0–4 | conditioned | Number of dark/light pairs. Zero disables activation; higher increases conditioning and flicker. |
+| White Ref. | 0; 0–63 | conditioned | Optional common white drive before the image. Higher may make the reference more reproducible, but adds an asymmetric dose and may worsen texture/drift. Disabled by default; try separately from activation. |
 | Rest Frames | 3; 0–16 | conditioned | Source rest-code scans after reference. More gives a longer interval under that electrical code, not a proven discharge. |
 | Tail Frames | 3; 0–16 | conditioned | Rest-code scans after each target cycle. Tests whether ending treatment affects drift/noise. Zero removes the tail. |
-| White Frames | 0; 0–63 | conditioned | 0 follows Frames; positive values independently set white-target length. Useful for black/white response asymmetry. Shorter row is padded, so total duration follows the longer target. |
-| Rest Rail Code | 0; 0–3 | conditioned | Source action during rest, tail and alignment padding. Raw electrical experiment: other codes can drive pixels rather than rest them. |
-| VCOM Rail Code | 0; 0–3 | conditioned | Constant VCOM action throughout preparation. Can alter every pixel's effective field; keep 0 as the comparison baseline. Does not change candidate gray VCOM. |
-| Pause ms | 0; 0–1000 | all modes, rebuild only | Software wait AFTER B/W BUSY completion and BEFORE gray upload/refresh. This is outside the LUT and does not establish zero field. No effect on standalone image buttons or repeat-only gray pulses. |
+| White Target | 0; 0–63 | conditioned | 0 follows Frames; positive values independently set white-target length. Useful for black/white response asymmetry. Shorter row is padded, so total duration follows the longer target. |
+| Rest Code | 0; 0–3 | conditioned | Source action during rest, tail and alignment padding. Raw electrical experiment: other codes can drive pixels rather than rest them. |
+| VCOM Code | 0; 0–3 | conditioned | Constant VCOM action throughout preparation. Can alter every pixel's effective field; keep 0 as the comparison baseline. Does not change candidate gray VCOM. |
+| Pause (ms) | 0; 0–1000 | all modes, rebuild only | Software wait AFTER B/W BUSY completion and BEFORE gray upload/refresh. This is outside the LUT and does not establish zero field. No effect on standalone image buttons or repeat-only gray pulses. |
 
 The existing A/B/C, opposite-prefix, pulse-repeat, neutral and gray hold controls
 still affect the candidate stage. They do not replace the new B/W rest/VCOM
@@ -89,25 +99,25 @@ conditioning controls (apart from the shared optional host pause).
 
 ## Image buttons
 
-* Clear To White: all 384,000 visible pixels white, with no labels.
-* Clear To Black: all pixels black, with no labels.
-* Show Known Image: fixed chart of solid blocks, outlined rectangle, fine/coarse
+* Clear White: all 384,000 visible pixels white, with no labels.
+* Clear Black: all pixels black, with no labels.
+* Known Image: fixed chart of solid blocks, outlined rectangle, fine/coarse
   stripes, checkerboard, diagonal edge and house silhouette.
-* Show Random Edges: new seeded chunky pattern and house silhouette. No random
+* Random Edges: new seeded chunky pattern and house silhouette. No random
   per-pixel speckle. The seed appears in the image and Test Image diagnostic.
-* Repeat Last B-W Image: exact previous image/seed with the currently selected
+* Repeat Image: exact previous image/seed with the currently selected
   drive mode and tuning. Use this for identical-target A/B comparisons.
 
 Buttons acquire calibration ownership, drive the selected full-screen B/W
 recipe, stop before gray settling, and invalidate held calibration references.
 The image remains until another explicit operation or exit to the normal UI.
-The normal Power Off Pumps button remains available. Pure white/black commands
+The normal Pumps Off button remains available. Pure white/black commands
 are full B/W preparation operations, not a single unconditioned rail pulse.
 
 ## Timing experiment: what recommendation 2 measures
 
 The transport keeps its most recent 96 diagnostic events in RAM. Press Export
-Timing after the operation completes, or enable Detailed Logging to export after
+Timing after the operation completes, or enable Detailed Logs to export after
 each job. A frozen snapshot is exported one record per 50 ms, with BEGIN/END
 markers (up to about five seconds); export pauses during a new waveform. This
 avoids the dropped records seen with a burst export. Collection performs no
@@ -174,7 +184,7 @@ reasserts KW mode, geometry and data setup before either plane upload. It only
 selects the external LUT immediately before that refresh. No drive-voltage
 values are invented or copied from a different panel.
 
-**Factory Prime On Cold Start** is a separate switch, OFF by default. When ON,
+**Factory Prime** is a separate switch, OFF by default. When ON,
 the first programmable B/W preparation after reset or power-off runs an actual
 factory OTP refresh of that target, rewrites both planes, then runs the selected
 programmable recipe without reset/power-cycle. It reproduces the user's proven
@@ -208,7 +218,7 @@ It reads twice and marks the capture verified only if both streams match, the
 48-byte probe header agrees, and the refresh-enable key is A5. No programming
 command, voltage change or display refresh is part of this capture.
 
-**Waveform Export Panel Factory Memory** exports that saved boot snapshot in
+**Export Factory** exports that saved boot snapshot in
 32-byte chunks, with byte offsets, a verification flag, FNV-1a checksum and an END
 marker. Pressing the button does not access the panel bus or change the screen.
 Exports pause during a calibration operation. An unverified capture is diagnostic
@@ -236,7 +246,7 @@ codes, not measured rail voltages. The implementation accepts only this observed
 module signature, memory shape and values; unfamiliar/unverified data disables the
 experiment. No voltage sweep or user-entered raw power values are provided.
 
-**Waveform Cold Start Power Setup** has three choices:
+**Cold Start** has three choices:
 
 | Choice | Behavior | Desired / expected diagnostic effect |
 |---|---|---|
@@ -245,7 +255,7 @@ experiment. No voltage sweep or user-entered raw power values are provided.
 | Panel Power And Clock - Experimental | Same explicit power setup, plus PLL `09` from the apparent factory table header, reasserted after PON and before refresh | Adds a clock comparison. The duration/energy of a counted frame can change, so the same frame count can give different contrast, noise and total duration. Exact Hz and the direction of the duration change have not been measured on this controller. |
 
 The selector changes only the next OFF-to-PON startup. It never changes voltage
-or clock underneath a powered waveform. **Waveform Applied Power Setup** reports
+or clock underneath a powered waveform. **Applied Power** reports
 the latched setup and its raw payload, or that a selection is pending/rejected.
 The default is Legacy Setup on each reboot. Power setup and factory priming are
 independent controls; priming can hide whether the explicit setup fixed cold start.
@@ -256,7 +266,7 @@ For a useful comparison:
    Prime On Cold Start OFF**.
 2. Select **Panel Power - Experimental**. Exit calibration, wait for exit to
    finish, and enter it again. This resets the controller and removes the warm
-   factory state. Verify Applied Power Setup after the next operation.
+   factory state. Verify Applied Power after the next operation.
 3. Show the known image, then clear white and clear black. Report whether each
    reaches its endpoint, whether old edges remain, and whether noise changes.
 4. Repeat the exit/re-enter sequence with **Panel Power And Clock - Experimental**.
