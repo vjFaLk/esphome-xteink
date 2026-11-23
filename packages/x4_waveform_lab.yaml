@@ -208,6 +208,15 @@ button:
       - lambda: id(x4_display).show_calibration_image(6);
 
   - platform: template
+    name: "White Candidates"
+    device_id: lab_gray
+    entity_category: diagnostic
+    on_press:
+      - switch.turn_on: waveform_lab
+      - script.wait: waveform_take_control
+      - lambda: id(x4_display).show_calibration_image(uint8_t(::x4render::TestImage::WhiteCandidates));
+
+  - platform: template
     name: "Neighbor Mixes"
     device_id: lab_gray
     entity_category: diagnostic
