@@ -92,6 +92,8 @@ class XteinkDisplay : public display::DisplayBuffer {
   void log_calibration_waveforms() const;
   void log_calibration_timing();
   void log_panel_mtp();
+  void set_panel_power_setup(uint8_t value);
+  std::string panel_power_setup_status() const;
   void set_vertical_window(bool v) { vertical_window_ = v; }
   void set_cropped_upload(bool v) { cropped_upload_ = v; }
   void set_detailed_logging(bool v) { detailed_ = v; }
@@ -148,6 +150,7 @@ class XteinkDisplay : public display::DisplayBuffer {
       calibration_active_{false}, exit_requested_{false};
   bool exit_shutdown_attempted_{false}, exit_failed_{false};
   uint8_t last_test_image_{3};
+  uint8_t panel_power_setup_{0};
   uint32_t last_image_seed_{0};
   std::array<freeink::Uc8279X4Transport::TraceEvent, 96> timing_snapshot_{};
   size_t timing_size_{0}, timing_index_{0};

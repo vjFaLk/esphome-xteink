@@ -35,5 +35,6 @@ jobs:
           submodules: recursive
       - run: python3 components/xteink/dependencies/freeink/libs/display/FreeInkDisplay/test/host/run_x4_transport.py
       - run: python3 components/xteink/dependencies/freeink/libs/display/FreeInkDisplay/test/host/run_pro.py
+      - run: python3 components/xteink/dependencies/freeink/libs/hardware/XteinkDetect/test/host/run_probe.py
       - run: python3 components/xteink/dependencies/rendering/test/run.py
       - run: git diff --exit-code && git submodule status --recursive

@@ -152,6 +152,7 @@ bool XteinkDisplay::begin_calibration() {
   }
   transport_->clearTrace();
   transport_->reset();
+  set_panel_power_setup(panel_power_setup_);
   lab_->invalidate();
   calibration_active_ = true;
   exit_requested_ = false;
@@ -283,6 +284,26 @@ void XteinkDisplay::log_calibration_timing() {
              (unsigned long)e.at, names[uint8_t(e.event)], e.command,
              (unsigned long)e.detail, (unsigned long)e.pollGap);
   });
+}
+void XteinkDisplay::set_panel_power_setup(uint8_t value) {
+  panel_power_setup_ = value <= 2 ? value : 0;
+  if (!transport_) return;
+  const auto snapshot = freeink::getXteinkPanelMtpSnapshot();
+  const auto profile = freeink::observedX4PanelPower(
+      snapshot.data, snapshot.size, snapshot.verified,
+      freeink::getXteinkDisplayProbeDiag().ver[2]);
+  transport_->setPanelPower(profile, panel_power_setup_);
+  if (panel_power_setup_ && !profile.valid)
+    ESP_LOGW(TAG, "Panel power experiment unavailable: factory snapshot/profile mismatch");
+}
+std::string XteinkDisplay::panel_power_setup_status() const {
+  if (!transport_) return "Not powered in calibration; selection applies at next PON";
+  const auto mode = transport_->activePowerMode();
+  if (mode != panel_power_setup_)
+    return "Selection pending or profile rejected; turn pumps off or exit/re-enter calibration";
+  if (!mode) return "Legacy setup; no explicit PWR/VDCS/BTST";
+  return std::string("EXPERIMENT PWR=4300787814 VDCS=24 BTST=25253C PLL=") +
+         (mode == 2 ? "09" : "0E");
 }
 void XteinkDisplay::log_panel_mtp() {
   if (calibration_busy()) return;

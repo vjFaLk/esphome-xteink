@@ -207,6 +207,21 @@ script:
 
 select:
   - platform: template
+    name: "Waveform Cold Start Power Setup"
+    entity_category: diagnostic
+    optimistic: true
+    restore_value: false
+    initial_option: "Legacy Setup"
+    options:
+      - "Legacy Setup"
+      - "Panel Power - Experimental"
+      - "Panel Power And Clock - Experimental"
+    set_action:
+      - lambda: |-
+          id(x4_display).set_panel_power_setup(
+            x == "Legacy Setup" ? 0 :
+            x == "Panel Power - Experimental" ? 1 : 2);
+  - platform: template
     name: "Rendering Mode Request"
     entity_category: diagnostic
     optimistic: true
@@ -261,6 +276,11 @@ sensor:
     update_interval: 1s
     lambda: return id(x4_display).calibration_cycles();
 text_sensor:
+  - platform: template
+    name: "Waveform Applied Power Setup"
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: return {id(x4_display).panel_power_setup_status()};
   - platform: template
     name: "Waveform Test Image"
     entity_category: diagnostic
