@@ -75,6 +75,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_bw_rail_budget(uint16_t value) { bw_rail_budget_ = value; }
   void set_gray_dither(::x4render::GrayDither value) { gray_dither_ = value; }
   void set_zone_finish(::x4render::ZoneFinish value) { zone_finish_ = value; }
+  void set_zone_gray_settle(bool value) { zone_gray_settle_ = value; }
   void set_bw_activation_frames(uint8_t v) { bw_tuning_.shakeFrames = v; }
   void set_bw_activation_cycles(uint8_t v) { bw_tuning_.shakeCycles = v; }
   void set_bw_reference_frames(uint8_t v) { bw_tuning_.whiteReference = v; }
@@ -177,6 +178,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   uint16_t bw_rail_budget_{160};
   ::x4render::GrayDither gray_dither_{::x4render::GrayDither::Columns};
   ::x4render::ZoneFinish zone_finish_{::x4render::ZoneFinish::Off};
+  bool zone_gray_settle_{false};
   bool bw_split_guard_{true};
   bool temp_override_{false};
   int manual_temp_c_{30};

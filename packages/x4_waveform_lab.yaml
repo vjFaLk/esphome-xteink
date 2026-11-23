@@ -18,6 +18,17 @@ xteink:
 
 switch:
   - platform: template
+    name: "Zone Gray Settle"
+    device_id: lab_gray
+    entity_category: diagnostic
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - lambda: id(x4_display).set_zone_gray_settle(true);
+    turn_off_action:
+      - lambda: id(x4_display).set_zone_gray_settle(false);
+
+  - platform: template
     name: "Split if Needed"
     device_id: lab_images
     entity_category: diagnostic

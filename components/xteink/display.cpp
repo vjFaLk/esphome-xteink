@@ -203,6 +203,7 @@ bool XteinkDisplay::begin_tuned_bw_() {
   lab_->burstHeadroom = 80;
   lab_->bwSplitGuard = true;
   lab_->zoneFinish = ::x4render::ZoneFinish::Off;
+  lab_->zoneGraySettle = false;
   lab_->holdRail = 0;
   lab_->parameters = {{{2, 2, 3, 1, 1}, {2, 3, 3, 1, 1}, {2, 4, 3, 1, 1}}};
   tuned_completed_ = lab_->startImage(millis(), ::x4render::TestImage::BwBoiler);
@@ -322,6 +323,7 @@ bool XteinkDisplay::configure_lab_() {
   lab_->bwBudget = bw_rail_budget_;
   lab_->grayDither = gray_dither_;
   lab_->zoneFinish = zone_finish_;
+  lab_->zoneGraySettle = zone_gray_settle_;
   lab_->bwSplitGuard = bw_split_guard_;
   lab_->grayZoneGuard = bw_split_guard_;
   lab_->verticalWindowValidated = vertical_window_;
@@ -420,9 +422,12 @@ std::string XteinkDisplay::calibration_bw_zones() const {
   std::snprintf(value, sizeof(value), "%u pass%s, %u px lanes | rail %u, local 8/32 %u/%u",
                 unsigned(plan.count), plan.count == 1 ? "" : "es", unsigned(plan.laneWidth ? plan.laneWidth : 800),
                 unsigned(plan.wholeRecent), unsigned(plan.localRecent), unsigned(plan.localSustained));
-  if (lab_->appliedZoneFinish() == ::x4render::ZoneFinish::Hold) return std::string(value) + " | panel hold";
-  if (lab_->appliedZoneFinish() == ::x4render::ZoneFinish::Wait) return std::string(value) + " | idle wait";
-  return value;
+  std::string result(value);
+  if (lab_->appliedZoneFinish() == ::x4render::ZoneFinish::Hold) result += " | panel hold";
+  if (lab_->appliedZoneFinish() == ::x4render::ZoneFinish::Wait) result += " | idle wait";
+  if (const auto passes = lab_->graySettlePasses())
+    result += " | gray " + std::to_string(passes) + (passes == 1 ? " pass" : " passes");
+  return result;
 }
 void XteinkDisplay::end_calibration() {
   if (!calibration_active_) return;
