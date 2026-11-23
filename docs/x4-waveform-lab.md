@@ -1,19 +1,24 @@
 # X4 waveform lab
 
-## Comparing source switching loads (v11)
+## Comparing source switching loads (v12)
 
 **Test Patterns → V Stripes** and **Checkerboard** both use one complete
 B/W refresh with the selected B/W Drive. Both have 400 black and 400 white
-pixels on every visible line, with one-pixel alternation across the row.
-V Stripes repeats the row. Checkerboard complements every other row. Away
-from the borders this changes the number of switching source lines from
-0 to 800 between successive scan rows. Both keep the same hidden-gate fill.
+pixels on every visible line. Both have six identical groups of black,
+B/W-dithered middle tone, and white patches. The groups are staggered
+across three bands so they sample different parts of the screen.
+
+V Stripes repeats the background row. Checkerboard complements every other
+background row. Inside each patch band, 608 columns still switch on every
+checkerboard row and zero switch on the stripe rows. Between bands the
+counts are 800 and zero. Entry and exit rows also contain the transitions
+into or out of the patches. The hidden-gate fill is identical in both tests.
 
 Run both under the tuned preset first. If a common optical baseline is
-needed, press Clear White before each pattern. Look for broad bands or
-streaks, including after BUSY completes. The intended 1-pixel patterns
-can alias in a camera image, so a repeatable visible band is more useful
-than a change in fine texture.
+needed, press Clear White before each pattern. Compare the same solid
+patches during inversion and after the refresh settles. Look for a broad
+band, uneven fill, or visible edges from the earlier image. The middle
+patch uses two-pixel stripes, so it renders in the same single B/W pass.
 
 To compare the controller's factory waveform, set **B/W Drive → Factory
 OTP** and **Cold Start → Legacy Setup**. Exit calibration, wait for
@@ -47,6 +52,8 @@ If both new views finish cleanly, compare a normal Linear Ramp using Factory
 Tuned and Factory Replay at the same temperature. That leaves the image data
 fixed and separates the tuned waveform additions from the factory waveform.
 If the band remains in a settled B/W view, compare that view in Factory OTP.
+The user observed the ramp artifact in Factory OTP as well as Factory Tuned,
+across the cold-start comparison. Source load remains a hypothesis.
 
 
 ## Photographing neighboring shades (v9)
