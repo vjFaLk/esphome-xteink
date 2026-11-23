@@ -1,5 +1,29 @@
 # X4 waveform lab
 
+## Boiler preset and optical gray calibration (v19)
+
+**B-W Tuned** is the boiler's default Render Mode. It uses the boot
+temperature to select the factory table, restores panel power and clock,
+and applies Shake 1 frame × 2, White Ref. 5, Rest Trim +3, and Drive Trim 0.
+It uses Row Repair 30%, Rail Budget 160, Local Budget 40, and Burst Headroom
+80, with up to three passes. A frame that meets the budget with its original
+pixels uses one pass. The selected B/W recipe also fills the initial lab
+controls. **B-W Dither** selects the native B/W update path.
+
+**Gray Dither** controls the pattern for preparing neighboring shades.
+**Column Stable** assigns the lighter shade by a repeating 16-column rank,
+which keeps the duty steps and reduces alternation between scan rows.
+**Bayer** uses the existing distributed 4×4 ranks. **Split if Needed** can
+send the prepared B/W bitmap in up to three passes. Every pixel retains its
+original B/W starting color and matching gray settle selector.
+
+Capture **Gray Tuning → Neighbor Mixes** with exposure and lighting locked.
+It shows the eight raw references and seven adjacent-pair rows with 17
+coverage steps each. Capture **Linear Ramp** without changing the exposure,
+lighting, viewing angle, or controls. The ramp's lower B/W bands serve as an
+optical reference. The six intermediate shade IDs remain provisional until
+the photos establish their order and the coverage curves can be fitted.
+
 ## Using at most three B/W zones (v18)
 
 The user reported that Staggered drove well, Jittered still struggled,
