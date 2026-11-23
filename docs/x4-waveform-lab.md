@@ -15,6 +15,14 @@ modes use the verified factory temperature table with the tuned boiler
 B/W recipe. They use full-width activation and a hold selector outside
 the exact pixel mask. Mode and page changes rebuild the requested frame.
 
+**Calibration → Update Margin** controls the no-hold border for both gray
+modes. The boiler package starts at 1 px. Use 0 to compare the exact mask,
+or 2 to refresh a wider edge. A square kernel adds neighbors around each
+changed pixel, clipped to the panel. Each added pixel is driven to its
+target shade. Dither Then Settle can also extend into connected grays.
+The control applies at the next changed update. Set
+`grayscale_update_margin` on the display to choose its boot value.
+
 **Single Settle** uses five physical tones. Supply `stable_gray_frames`
 and `stable_gray_luminance` in G1–G3 order to enable it. The
 [stable profile example](../packages/x4_pro_stable_profile_example.yaml)
