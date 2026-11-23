@@ -5,7 +5,8 @@ For a repeat calibration, use the pinned rendering library's
 and [drive-load findings](../components/xteink/dependencies/rendering/docs/drive-load.md).
 The [measured profile package](../packages/x4_pro_relative_profile_example.yaml)
 records the approved eight-shade profile and capture settings for one panel.
-The versioned sections below retain the development observations.
+The versioned sections below retain the development observations. Several
+controls from those experiments were removed from the default HA package.
 
 ## Rendering with the calibrated profiles
 
@@ -13,7 +14,9 @@ The **Calibration → Render Mode** selector offers **B-W Tuned**,
 **B-W Dither**, **Single Settle**, and **Dither Then Settle**. The grayscale
 modes use the verified factory temperature table with the tuned boiler
 B/W recipe. They use full-width activation and a hold selector outside
-the exact pixel mask. Mode and page changes rebuild the requested frame.
+the exact pixel mask. Split B/W ends with a full-panel hold in each mode
+that uses the tuned waveform. **Zone Plan** reports the hold on split jobs.
+Mode and page changes rebuild the requested frame.
 
 **Calibration → Update Margin** controls the no-hold border for both gray
 modes. The boiler package starts at 1 px. Use 0 to compare the exact mask,
@@ -45,6 +48,20 @@ through the normal renderer. **Demo Marker** toggles a gray 22 × 21 patch cross
 x752. Use it to inspect the column and compare the unchanged gray area across
 repeated updates. The sensors report the mask, activation window, pass
 counts, transfer size, and duration.
+
+## Touch preview on the Light pane
+
+With either gray mode selected, a touch on the Light pane enables ordered
+B/W for changed pixels. The display coalesces slider motion while an update
+is busy. After release it waits for the final LVGL draw and settles the
+affected area in the selected gray mode. Frontlight settings still commit
+on slider release.
+
+The boiler package binds `begin_touch_preview()` and `end_touch_preview()`
+to `x4_touch` while `light_page` is active. On boiler configurations that
+still wrap slider presses in `begin_virtual_update()` and
+`end_virtual_update(true)`, remove those two calls and the associated
+release delay so LVGL can send the intermediate slider positions.
 
 ## Boiler preset and optical gray calibration (v19)
 
