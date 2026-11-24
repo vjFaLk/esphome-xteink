@@ -313,6 +313,22 @@ script:
 
 select:
   - platform: template
+    name: "Single Settle Area"
+    device_id: lab_session
+    entity_category: diagnostic
+    optimistic: true
+    initial_option: "Rectangle"
+    options:
+      - "Pixel Mask"
+      - "Rectangle"
+      - "Rectangle + Gray Margin"
+    on_value:
+      - lambda: |-
+          using Mask = ::x4render::SingleMask;
+          id(x4_display).set_single_settle_mask(x == "Pixel Mask" ? Mask::Pixels :
+               x == "Rectangle" ? Mask::Rectangle : Mask::RectangleGrayMargin);
+
+  - platform: template
     id: lab_render_mode
     name: "Render Mode"
     device_id: lab_session

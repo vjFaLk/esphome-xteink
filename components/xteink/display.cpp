@@ -157,13 +157,13 @@ void XteinkDisplay::update() {
   if (!force_full_ &&
       (touch_phase_ == TouchPhase::Released ||
        (touch_phase_ == TouchPhase::Dragging && !gray_mode_()))) return;
-  if (gray_mode_() && ready_) {
+  if (masked_mode_() && ready_) {
     dirty_ = false;
-    const bool preview = touch_phase_ == TouchPhase::Dragging && !force_full_ &&
+    const bool preview = gray_mode_() && touch_phase_ == TouchPhase::Dragging && !force_full_ &&
                          frames_.knowledge == ::x4render::Knowledge::Known;
     const bool periodic = !preview && !frames_.hasPreview() && full_every_ && partials_ >= full_every_;
     const bool force = force_full_ || refresh_mode_ == FULL_REFRESH || periodic;
-    if (begin_gray_(force, preview)) {
+    if (begin_masked_refresh_(force, preview)) {
       if (!preview) {
         force_full_ = false;
         if (pending_) partials_ = force ? 0 : partials_ + 1;
@@ -171,13 +171,6 @@ void XteinkDisplay::update() {
     } else if (preview || frames_.hasPreview()) {
       dirty_ = true;
     }
-    return;
-  }
-  if (requested_mode_ == TunedBwMode && ready_) {
-    dirty_ = false;
-    if (!force_full_ && has_frame_ &&
-        !std::memcmp(frames_.displayed.data(), frames_.target.data(), ::x4render::Pixels)) return;
-    if (begin_tuned_bw_()) force_full_ = false;
     return;
   }
   if (ready_) {
@@ -221,7 +214,7 @@ void XteinkDisplay::update() {
 }
 bool XteinkDisplay::finish_normal_(bool wait) {
   if (tuned_state_ != TunedState::Idle) {
-    while (tuned_state_ != TunedState::Held && !poll_tuned_bw_()) {
+    while (tuned_state_ != TunedState::Held && !poll_masked_refresh_()) {
       if (!wait) return false;
       App.feed_wdt();
       delay(1);
@@ -260,14 +253,17 @@ bool XteinkDisplay::acquire_controller_(bool for_lab) {
   if (lab_) lab_->invalidate();
   return true;
 }
-bool XteinkDisplay::begin_gray_(bool force, bool preview) {
+bool XteinkDisplay::begin_masked_refresh_(bool force, bool preview) {
   using namespace ::x4render;
   Settings settings;
-  settings.mode = requested_mode_ == 1 ? Mode::SingleSettle : Mode::DitherSettle;
-  settings.margin = grayscale_update_margin_;
-  const bool relative = settings.mode == Mode::DitherSettle;
+  const bool stable = requested_mode_ == 1;
+  const bool relative = requested_mode_ == 2;
+  settings.mode = stable ? Mode::SingleSettle : relative ? Mode::DitherSettle : Mode::BwDither;
+  settings.margin = gray_mode_() ? grayscale_update_margin_ : 0;
   factory_error_ = nullptr;
-  settings.palette = relative ? diagnostic_palette_() : measuredStablePalette(stable_luminance_);
+  settings.singleMask = single_mask_;
+  if (relative) settings.palette = diagnostic_palette_();
+  if (stable) settings.palette = measuredStablePalette(stable_luminance_);
   if (preview ? !frames_.planPreview(settings.margin) : !frames_.plan(settings, force)) return false;
   if (!frames_.driven) return preview || frames_.commit();
 
@@ -278,92 +274,44 @@ bool XteinkDisplay::begin_gray_(bool force, bool preview) {
       freeink::getXteinkDisplayProbeDiag().ver[2], temp);
   LutBank bw, gray{};
   if (!profile.power.valid || !tuneFactoryBw(profile.rows, TunedBoilerWaveform, bw) ||
-      (!preview && !relative && !stableGrayBank(bw, stable_render_frames_, gray))) {
+      (!preview && stable && !stableGrayBank(bw, stable_render_frames_, gray))) {
     frames_.phase = Phase::Idle;
-    factory_error_ = "Gray factory table or pulse profile unavailable";
+    factory_error_ = "Factory table or pulse profile unavailable";
     return false;
   }
   if (!preview && relative) gray = candidates(RelativePulses);
-  if (!gray_refresh_.plan(bw, gray, 96, 40)) {
+  if (!masked_refresh_.plan(bw, gray, gray_mode_() ? 96 : 160, 40)) {
     frames_.phase = Phase::Idle;
-    gray_result_ = "Source budget exceeds three zones";
+    masked_result_ = "Source budget exceeds three zones";
     return false;
   }
   if (!acquire_controller_(false)) {
     frames_.phase = Phase::Idle;
-    gray_result_ = "Controller unavailable";
+    masked_result_ = "Controller unavailable";
     return false;
   }
   transport_->setPanelPower(profile.power, 2);
   transport_->setCalibrationTemperature(temp);
-  gray_started_ = millis();
-  gray_driving_ = gray_refresh_.start(*transport_, gray_started_);
-  if (!gray_driving_) {
+  masked_started_ = millis();
+  if (!masked_refresh_.start(*transport_, masked_started_)) {
     parent_->display().endControllerSession();
     frames_.fail();
-    gray_result_ = "Could not start gray drive";
+    masked_result_ = "Could not start masked drive";
     return false;
   }
-  gray_result_ = "running";
+  masked_result_ = "running";
   driving_touch_preview_ = preview;
   tuned_state_ = TunedState::Driving;
   pending_ = true;
   enable_loop();
   return true;
 }
-bool XteinkDisplay::begin_tuned_bw_() {
-  const auto snapshot = freeink::getXteinkPanelMtpSnapshot();
-  const int temp = snapshot.temperatureC != -128 ? snapshot.temperatureC : 30;
-  const auto profile = freeink::observedX4FactoryProfile(
-      snapshot.data, snapshot.size, snapshot.verified,
-      freeink::getXteinkDisplayProbeDiag().ver[2], temp);
-  ::x4render::LutBank rows;
-  if (!profile.power.valid || !::x4render::tuneFactoryBw(profile.rows, TunedBoilerWaveform, rows)) {
-    factory_error_ = "Tuned boiler factory table unavailable";
-    return false;
-  }
-  if (!frames_.beginAbsoluteBw()) return false;
-  if (!acquire_controller_()) {
-    frames_.fail();
-    factory_error_ = "Tuned boiler could not acquire controller";
-    return false;
-  }
-  transport_->setPanelPower(profile.power, 2);
-  transport_->setCalibrationTemperature(temp);
-  lab_->factoryDerivedBw = rows;
-  lab_->otpBwEstimate.reset();
-  lab_->bwPreparation = {};
-  lab_->bwPreparation.programmable = true;
-  lab_->boilerLuma = frames_.target.data();
-  lab_->bwTexture = ::x4render::BwTexture::Repair;
-  lab_->repairStrength = 30;
-  lab_->bwBudget = 160;
-  lab_->bwLocalBudget = 40;
-  lab_->burstHeadroom = 80;
-  lab_->bwSplitGuard = true;
-  lab_->zoneFinish = ::x4render::ZoneFinish::Hold;
-  lab_->zoneGraySettle = false;
-  lab_->holdRail = 0;
-  lab_->parameters = {{{2, 2, 3, 1, 1}, {2, 3, 3, 1, 1}, {2, 4, 3, 1, 1}}};
-  tuned_completed_ = lab_->startImage(millis(), ::x4render::TestImage::BwBoiler);
-  tuned_state_ = TunedState::Driving;
-  pending_ = true;
-  enable_loop();
-  return true;
-}
-bool XteinkDisplay::poll_tuned_bw_() {
+bool XteinkDisplay::poll_masked_refresh_() {
   using Status = freeink::Uc8279X4Transport::Status;
   if (tuned_state_ == TunedState::Driving) {
-    if (gray_driving_) {
-      using Stage = ::x4render::GrayRefresh::Stage;
-      if (!gray_refresh_.poll(*transport_, millis())) return false;
-      tuned_completed_ = gray_refresh_.stage == Stage::Done;
-      factory_error_ = tuned_completed_ ? nullptr : "Gray refresh completion unknown";
-    } else {
-      if (lab_->busy() && !lab_->poll(millis())) return false;
-      tuned_completed_ = tuned_completed_ && std::strcmp(lab_->result(), "complete") == 0;
-      factory_error_ = tuned_completed_ ? nullptr : lab_->result();
-    }
+    if (!masked_refresh_.poll(*transport_, millis())) return false;
+    tuned_completed_ = masked_refresh_.stage == ::x4render::GrayRefresh::Stage::Done;
+    factory_error_ = tuned_completed_ ? nullptr : "Masked refresh completion unknown";
     // Power-off is a separate transaction. Keep the useful render result.
     if (transport_->status() != Status::Off && transport_->powerOff(millis())) {
       tuned_state_ = TunedState::PoweringOff;
@@ -372,17 +320,13 @@ bool XteinkDisplay::poll_tuned_bw_() {
   } else if (transport_->poll(millis()) == freeink::Uc8279X4Transport::Result::Pending) {
     return false;
   }
-  const bool gray = gray_driving_;
   const bool preview = driving_touch_preview_;
-  if (gray) {
-    gray_duration_ = millis() - gray_started_;
-    gray_bytes_ = transport_->uploadedBytes();
-  }
-  gray_driving_ = false;
+  masked_duration_ = millis() - masked_started_;
+  masked_bytes_ = transport_->uploadedBytes();
   driving_touch_preview_ = false;
   if (transport_->status() != Status::Off) {
     tuned_state_ = TunedState::Held;
-    factory_error_ = "Tuned boiler power-off unconfirmed";
+    factory_error_ = "Masked refresh power-off unconfirmed";
     frames_.fail();
     pending_ = false;
     has_frame_ = false;
@@ -391,15 +335,14 @@ bool XteinkDisplay::poll_tuned_bw_() {
     return true;
   }
   parent_->display().endControllerSession();
-  if (tuned_completed_ && (gray || frames_.prepared(true)) &&
-      (preview ? frames_.commitPreview() : frames_.commit())) {
+  if (tuned_completed_ && (preview ? frames_.commitPreview() : frames_.commit())) {
     has_frame_ = true;
     update_count++;
-    if (gray) gray_result_ = "complete";
+    masked_result_ = "complete";
   } else {
     frames_.fail();
     has_frame_ = false;
-    if (gray) gray_result_ = "Gray refresh completion unknown";
+    masked_result_ = "Masked refresh completion unknown";
   }
   pending_ = false;
   tuned_state_ = TunedState::Idle;
@@ -511,7 +454,7 @@ bool XteinkDisplay::repeat_calibration_image() {
   return show_calibration_image(last_test_image_, last_image_argument_);
 }
 std::string XteinkDisplay::calibration_image() const {
-  if (!calibration_active_ && (gray_mode_() || render_demo_))
+  if (!calibration_active_ && (masked_mode_() || render_demo_))
     return render_demo_ ? "landscape renderer demo" : "LVGL";
   if (!lab_) return "none";
   if (lab_->stableChart()) return "stable gray chart";
@@ -582,10 +525,10 @@ std::string XteinkDisplay::calibration_bw_charge() const {
   return value;
 }
 std::string XteinkDisplay::calibration_bw_zones() const {
-  if (!calibration_active_ && gray_mode_()) {
-    std::string plan = std::to_string(gray_refresh_.preparationPasses()) + " B/W | " +
-                       std::to_string(gray_refresh_.settlePasses()) + " gray passes";
-    if (gray_refresh_.finishesPreparationWithHold()) plan += " | panel hold";
+  if (!calibration_active_ && masked_mode_()) {
+    std::string plan = std::to_string(masked_refresh_.preparationPasses()) + " B/W | " +
+                       std::to_string(masked_refresh_.settlePasses()) + " gray passes";
+    if (masked_refresh_.finishesPreparationWithHold()) plan += " | panel hold";
     return plan;
   }
   if (!lab_ || !lab_->zoneRequested()) return "No zoned plan requested";
@@ -749,12 +692,12 @@ const char* XteinkDisplay::calibration_pipeline() const {
   if (!calibration_active_ || !lab_) {
     if (tuned_state_ == TunedState::Held) return "boiler_tuned_power_off_unconfirmed";
     if (tuned_state_ == TunedState::Driving) {
-      if (!gray_driving_) return "boiler_tuned_bw_driving";
       if (driving_touch_preview_) return "light_touch_bw_driving";
       using Stage = ::x4render::GrayRefresh::Stage;
-      switch (gray_refresh_.stage) {
+      switch (masked_refresh_.stage) {
         case Stage::PowerOn: return "gray_power_on";
-        case Stage::Prepare: return "gray_bw_preparation";
+        case Stage::Prepare:
+          return frames_.current.mode == ::x4render::Mode::BwDither ? "boiler_tuned_bw_driving" : "gray_bw_preparation";
         case Stage::Hold: return "gray_panel_hold";
         case Stage::Settle: return "gray_settle_driving";
         default: return "gray_finishing";
@@ -843,7 +786,7 @@ void XteinkDisplay::log_calibration_waveforms() const {
     }
 }
 std::string XteinkDisplay::calibration_region() const {
-  if (!calibration_active_ && gray_mode_()) {
+  if (!calibration_active_ && masked_mode_()) {
     const auto r = frames_.requested, e = frames_.expanded;
     char text[160];
     std::snprintf(text, sizeof(text),

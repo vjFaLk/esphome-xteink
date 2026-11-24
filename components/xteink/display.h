@@ -29,6 +29,7 @@ class XteinkDisplay : public display::DisplayBuffer {
     grayscale_update_margin_ = std::min<uint8_t>(pixels, 2);
   }
   uint8_t get_grayscale_update_margin() const { return grayscale_update_margin_; }
+  void set_single_settle_mask(::x4render::SingleMask mask) { single_mask_ = mask; }
   void refresh_rendering_mode();
   bool set_render_demo(bool enabled);
   void set_render_demo_marker(bool enabled);
@@ -124,20 +125,20 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_detailed_logging(bool v) { detailed_ = v; }
   const char* calibration_result() const {
     if (factory_error_) return factory_error_;
-    if (!calibration_active_ && gray_mode_()) return gray_result_;
+    if (!calibration_active_ && masked_mode_()) return masked_result_;
     return lab_ ? lab_->result() : "idle";
   }
   uint32_t calibration_duration() const {
-    return !calibration_active_ && gray_mode_() ? gray_duration_ : lab_ ? lab_->duration : 0;
+    return !calibration_active_ && masked_mode_() ? masked_duration_ : lab_ ? lab_->duration : 0;
   }
   uint32_t calibration_bytes() const {
-    return !calibration_active_ && gray_mode_() ? gray_bytes_ : lab_ ? lab_->uploadedBytes() : 0;
+    return !calibration_active_ && masked_mode_() ? masked_bytes_ : lab_ ? lab_->uploadedBytes() : 0;
   }
   uint32_t calibration_driven() const {
-    return !calibration_active_ && gray_mode_() ? frames_.driven : lab_ ? lab_->driveCount : 0;
+    return !calibration_active_ && masked_mode_() ? frames_.driven : lab_ ? lab_->driveCount : 0;
   }
   uint32_t calibration_cycles() const {
-    return !calibration_active_ && gray_mode_() ? update_count : lab_ ? lab_->cycles : 0;
+    return !calibration_active_ && masked_mode_() ? update_count : lab_ ? lab_->cycles : 0;
   }
   std::string calibration_region() const;
   const char* calibration_pipeline() const;
@@ -178,20 +179,20 @@ class XteinkDisplay : public display::DisplayBuffer {
  protected:
   bool finish_normal_(bool wait);
   bool acquire_controller_(bool for_lab = true);
-  bool begin_tuned_bw_();
-  bool begin_gray_(bool force, bool preview);
+  bool begin_masked_refresh_(bool force, bool preview);
   void schedule_touch_settle_();
   void reset_touch_preview_();
+  bool masked_mode_() const { return requested_mode_ != 0; }
   bool gray_mode_() const { return requested_mode_ == 1 || requested_mode_ == 2; }
   void paint_demo_();
-  bool poll_tuned_bw_();
+  bool poll_masked_refresh_();
   bool configure_lab_();
   int factory_temperature_() const;
   ::x4render::Palette diagnostic_palette_() const;
   Xteink* parent_{nullptr};
   optional<xteink_writer_t> writer_{};
   ::x4render::Frames frames_;
-  ::x4render::GrayRefresh gray_refresh_{frames_};
+  ::x4render::GrayRefresh masked_refresh_{frames_};
   std::optional<freeink::Uc8279X4Transport> transport_;
   std::optional<::x4render::Calibration<freeink::Uc8279X4Transport>> lab_;
   bool grayscale_{false}, ready_{false}, rgb_{false}, dirty_{false},
@@ -202,15 +203,16 @@ class XteinkDisplay : public display::DisplayBuffer {
   enum class TunedState : uint8_t { Idle, Driving, PoweringOff, Held };
   TunedState tuned_state_{TunedState::Idle};
   bool tuned_completed_{false};
-  bool gray_driving_{false}, redraw_requested_{false};
+  bool redraw_requested_{false};
   enum class TouchPhase : uint8_t { Idle, Dragging, Released };
   TouchPhase touch_phase_{TouchPhase::Idle};
   bool driving_touch_preview_{false};
   bool render_demo_{false}, render_demo_marker_{false};
-  const char* gray_result_{"idle"};
-  uint32_t gray_started_{0}, gray_duration_{0}, gray_bytes_{0};
+  const char* masked_result_{"idle"};
+  uint32_t masked_started_{0}, masked_duration_{0}, masked_bytes_{0};
   uint8_t last_test_image_{3};
   uint8_t grayscale_update_margin_{0};
+  ::x4render::SingleMask single_mask_{::x4render::SingleMask::Pixels};
   uint8_t panel_power_setup_{2}, bw_mode_{2};
   ::x4render::BwTexture bw_texture_{::x4render::BwTexture::Bayer};
   uint8_t bw_column_strength_{100}, bw_repair_strength_{100};
