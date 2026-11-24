@@ -22,8 +22,7 @@ display:
     refresh_mode: fast
     full_refresh_every: 20
     grayscale: true
-    grayscale_strategy: adaptive
-    grayscale_settle_time: 5s
+    rendering_mode: dither_then_settle
 
 lvgl:
   displays: epd

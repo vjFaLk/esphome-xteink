@@ -1,10 +1,6 @@
-# UC8279 X4 refresh pipelines
+# Historical UC8279 X4 refresh experiments
 
-The observations below document the former `2162a84` implementation. The
-calibration architecture replaces its experimental pipelines with pinned
-FreeInk/rendering dependencies. See the README calibration section for current
-behavior. Historical optical observations remain evidence; proposed electrical
-explanations are not established controller semantics.
+These notes describe the former `2162a84` implementation, including its option defaults. For current modes and windowed uploads, see [X4 Pro rendering and calibration](x4-waveform-lab.md). The field observations below characterize the tested panel. Proposed electrical explanations remain hypotheses.
 
 The Xteink X4 Pro driver tracks three separate states: host framebuffers,
 controller DTM1/DTM2 RAM, and charge visible on the panel. A RAM write does not

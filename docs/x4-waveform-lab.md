@@ -1,44 +1,26 @@
 # X4 Pro rendering and calibration
 
-The X4 Pro renderer uses the temperature-selected factory B/W table, the
-verified panel power and clock settings, and calibrated gray profiles.
-## Render modes
+The calibrated renderer targets the 800 × 480 UC8279 X4 Pro. It reads a temperature-selected factory B/W table at boot. The [C++ overlay](../components/xteink/dependencies/rendering/README.md) supplies the measured profiles and the waveform construction.
 
-| Mode | Rendering path |
+## Choose a mode
+
+| `rendering_mode` | Use it for |
 | --- | --- |
-| B-W Tuned | Ordered dither with a factory-derived waveform. Incremental refreshes drive changed dither pixels. |
-| B-W Dither | FreeInk's native B/W path. |
-| Single Settle | Five physical tones. Black/white pixels use the B/W pass. Each gray selector combines the factory black reset with its lightening dose. |
-| Dither Then Settle | Dithers between eight measured shades. The B/W pass constructs each gray's starting tone, then the relative gray pass settles it. The mask includes connected gray from both frames. |
+| `bw` | Native FreeInk B/W. Start here on other supported Xteink models and panel variants. |
+| `bw_tuned` | Ordered B/W dither with a factory-derived balance, on the UC8279 X4 Pro. |
+| `single_settle` | Black, white, and three gray tones using separately tested lightening doses. |
+| `dither_then_settle` | Continuous input luminance rendered by dithering between adjacent calibrated physical shades. |
 
-Set `rendering_mode` on the display in YAML to `bw`, `bw_tuned`,
-`single_settle`, or `dither_then_settle`. The gray modes require `grayscale: true`.
-Setting the X4 Pro mode enables the boot-time factory table read. The C++
-overlay supplies the calibrated profile. Use 1-bit fonts in B/W modes to
-avoid dithering glyph edges. The boiler derives font bit depth from the mode.
+Set `grayscale: true` for either gray mode. The component enables the factory-table read when you configure a mode on the X4 Pro. Use 1-bit fonts for crisp monochrome text. Gray mode can render antialiased glyphs.
 
-Mode and page changes rebuild the requested image. Full-width scan lines
-avoid the observed x≈752 column artifact. Windowed uploads are enabled by
-default with grayscale, so ordinary partial passes send only the affected
-full-width rows. Set `grayscale_windowed_upload: false` for a full-plane
-comparison. Split B/W preparation uses up to three zones and ends with a
-panel hold. See the [drive-load findings](../components/xteink/dependencies/rendering/docs/drive-load.md)
-for the observed load limits and the model.
+## Keep partial updates reliable
+
+The driver uses full-width scan lines to avoid an observed untouched column near x≈752. `grayscale_windowed_upload` limits the uploaded rows without narrowing the active scan lines. It defaults on with grayscale. The renderer can split demanding updates into up to three interleaved zones and applies a panel-wide hold after split B/W preparation. See the [scan-load notes](../components/xteink/dependencies/rendering/docs/drive-load.md) for the measured observations and the limits of the model.
+
+For a slider, call `begin_touch_preview()` when dragging starts and `end_touch_preview()` on release. During the drag, the gray renderer can update changed pixels with a short direct B/W pulse. The next full-quality update restores the selected gray mode. Use normal LVGL invalidation for the slider and its value label.
+
+An [absolute region update](x4-minute-wake.md) is useful for small areas such as clocks after sleep. It can run even when the previous frame buffers are unavailable.
 
 ## Calibrate a different panel
 
-Use the [C++ rendering library](../components/xteink/dependencies/rendering/README.md)
-with the FreeInk controller transport. Its `Calibration` class draws the
-reference patterns. Load the resulting measurements through
-`GrayRefresh::loadCalibration` in firmware.
-
-## Check partial refreshes and interaction
-
-- On the Light pane, changed pixels use ordered B/W during touch. A
-  direct 16-frame pulse drives the preview. Release restores the selected
-  gray mode. The boiler package binds the display's touch-preview calls
-  to `x4_touch` while `light_page` is active. Remove legacy virtual-update
-  wrappers from the two slider callbacks when using this wiring.
-See [Minute wakes](x4-minute-wake.md) for scheduled refreshes. Earlier
-experimental recipes and control names remain in Git history
-(`git show d85f6ba:docs/x4-waveform-lab.md`).
+Use the [C++ calibration guide](../components/xteink/dependencies/rendering/docs/calibration.md) with the FreeInk transport. Its `Calibration` class draws the reference patterns. Load measured values through `GrayRefresh::loadCalibration()` in C++ firmware. The ESPHome adapter also exposes `load_panel_calibration()` for a C++ caller that needs to install a replacement profile.
