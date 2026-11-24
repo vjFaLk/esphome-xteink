@@ -6,6 +6,7 @@
 #include <optional>
 
 #include "esphome/components/display/display_buffer.h"
+#include "panel_sleep.h"
 #include "xteink.h"
 
 namespace esphome {
@@ -40,6 +41,15 @@ class XteinkDisplay : public display::DisplayBuffer {
   }
   void postpone_grayscale_settle() {}
   void prepare_page_change();
+  // Select a one-shot absolute update in physical panel coordinates.
+  bool select_region(uint16_t x, uint16_t y, uint16_t width, uint16_t height);
+  void clear_region();
+  bool region_update_finished() const;
+  bool region_update_succeeded() const;
+  bool has_known_frame() const {
+    return !calibration_active_ && !render_demo_ && frames_.knowledge == ::x4render::Knowledge::Known;
+  }
+  bool refresh_pending() const { return pending_; }
   void begin_touch_preview();
   void end_touch_preview();
   void begin_virtual_update() { virtual_ = true; }
@@ -207,6 +217,10 @@ class XteinkDisplay : public display::DisplayBuffer {
   enum class TouchPhase : uint8_t { Idle, Dragging, Released };
   TouchPhase touch_phase_{TouchPhase::Idle};
   bool driving_touch_preview_{false};
+  enum class RegionState : uint8_t { Normal, Selected, Running, Complete, Failed };
+  RegionState region_state_{RegionState::Normal};
+  ::x4render::Rect selected_region_{};
+  bool driving_region_{false};
   bool windowed_upload_{false};
   bool render_demo_{false}, render_demo_marker_{false};
   const char* masked_result_{"idle"};

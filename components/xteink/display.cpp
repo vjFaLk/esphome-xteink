@@ -2,12 +2,15 @@
 
 #include <cstdio>
 #include <cstring>
+#include <esp_attr.h>
 #include <XteinkDetect.h>
 
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
 namespace esphome {
 namespace xteink {
+RTC_DATA_ATTR static PanelSleepState sleep_panel{};
+PanelSleepState& panel_sleep_state() { return sleep_panel; }
 static const char* const TAG = "xteink.display";
 static constexpr int TunedBwMode = 3;
 static constexpr uint32_t TouchSettleDelayMs = 160;
@@ -45,6 +48,28 @@ void XteinkDisplay::reset_touch_preview_() {
 void XteinkDisplay::prepare_page_change() {
   reset_touch_preview_();
   force_full_ = true;
+}
+bool XteinkDisplay::select_region(uint16_t x, uint16_t y, uint16_t width, uint16_t height) {
+  if (!ready_ || BoardConfig::ACTIVE.displayController != BoardConfig::DisplayController::UC8279 ||
+      calibration_active_ || frozen_ || pending_ || render_demo_ ||
+      tuned_state_ == TunedState::Held || !width || !height ||
+      x + width > ::x4render::Width || y + height > ::x4render::Height) return false;
+  reset_touch_preview_();
+  selected_region_ = {x, y, width, height};
+  region_state_ = RegionState::Selected;
+  dirty_ = true;
+  return true;
+}
+void XteinkDisplay::clear_region() {
+  selected_region_ = {};
+  region_state_ = RegionState::Normal;
+  force_full_ = true;
+}
+bool XteinkDisplay::region_update_finished() const {
+  return region_state_ == RegionState::Complete || region_state_ == RegionState::Failed;
+}
+bool XteinkDisplay::region_update_succeeded() const {
+  return region_state_ == RegionState::Complete;
 }
 void XteinkDisplay::begin_touch_preview() {
   if (!ready_ || calibration_active_ || frozen_ || render_demo_) return;
@@ -154,6 +179,13 @@ void XteinkDisplay::update() {
     (*writer_)(*this);
   }
   if (virtual_ || !dirty_) return;
+  if (region_state_ != RegionState::Normal) {
+    if (region_state_ == RegionState::Selected) {
+      dirty_ = false;
+      region_state_ = begin_masked_refresh_(false, false) ? RegionState::Running : RegionState::Failed;
+    }
+    return;
+  }
   if (!force_full_ &&
       (touch_phase_ == TouchPhase::Released ||
        (touch_phase_ == TouchPhase::Dragging && !gray_mode_()))) return;
@@ -264,7 +296,10 @@ bool XteinkDisplay::begin_masked_refresh_(bool force, bool preview) {
   settings.singleMask = single_mask_;
   if (relative) settings.palette = diagnostic_palette_();
   if (stable) settings.palette = measuredStablePalette(stable_luminance_);
-  if (preview ? !frames_.planPreview(settings.margin) : !frames_.plan(settings, force)) return false;
+  const bool regional = region_state_ == RegionState::Selected;
+  const bool planned = regional ? frames_.planRegion(selected_region_, settings)
+      : preview ? frames_.planPreview(settings.margin) : frames_.plan(settings, force);
+  if (!planned) return false;
   if (!frames_.driven) return preview || frames_.commit();
 
   const auto snapshot = freeink::getXteinkPanelMtpSnapshot();
@@ -281,7 +316,7 @@ bool XteinkDisplay::begin_masked_refresh_(bool force, bool preview) {
   }
   if (preview) bw = directBwPreviewBank();
   if (!preview && relative) gray = candidates(RelativePulses);
-  if (!masked_refresh_.plan(bw, gray, gray_mode_() ? 96 : 160, 40, windowed_upload_)) {
+  if (!masked_refresh_.plan(bw, gray, gray_mode_() ? 96 : 160, 40, regional || windowed_upload_)) {
     frames_.phase = Phase::Idle;
     masked_result_ = "Source budget exceeds three zones";
     return false;
@@ -302,6 +337,7 @@ bool XteinkDisplay::begin_masked_refresh_(bool force, bool preview) {
   }
   masked_result_ = "running";
   driving_touch_preview_ = preview;
+  driving_region_ = regional;
   tuned_state_ = TunedState::Driving;
   pending_ = true;
   enable_loop();
@@ -322,13 +358,16 @@ bool XteinkDisplay::poll_masked_refresh_() {
     return false;
   }
   const bool preview = driving_touch_preview_;
+  const bool regional = driving_region_;
   masked_duration_ = millis() - masked_started_;
   masked_bytes_ = transport_->uploadedBytes();
   driving_touch_preview_ = false;
+  driving_region_ = false;
   if (transport_->status() != Status::Off) {
     tuned_state_ = TunedState::Held;
     factory_error_ = "Masked refresh power-off unconfirmed";
     frames_.fail();
+    if (regional && region_state_ == RegionState::Running) region_state_ = RegionState::Failed;
     pending_ = false;
     has_frame_ = false;
     disable_loop();
@@ -336,7 +375,16 @@ bool XteinkDisplay::poll_masked_refresh_() {
     return true;
   }
   parent_->display().endControllerSession();
-  if (tuned_completed_ && (preview ? frames_.commitPreview() : frames_.commit())) {
+  if (regional) {
+    // A regional update does not establish the appearance of the rest of
+    // the display. The next normal update must build a fresh full frame.
+    frames_.resetController();
+    has_frame_ = false;
+    if (region_state_ == RegionState::Running)
+      region_state_ = tuned_completed_ ? RegionState::Complete : RegionState::Failed;
+    if (tuned_completed_) update_count++;
+    masked_result_ = tuned_completed_ ? "complete" : "Masked refresh completion unknown";
+  } else if (tuned_completed_ && (preview ? frames_.commitPreview() : frames_.commit())) {
     has_frame_ = true;
     update_count++;
     masked_result_ = "complete";

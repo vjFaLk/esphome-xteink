@@ -269,7 +269,7 @@ script:
           id(timer_wake) = false;
       - script.stop: condition_display
       - script.stop: sleep_after_timer_refresh
-      - script.stop: timer_wake_fail_safe
+      - lambda: id(x4_display).clear_region();
       - script.stop: interactive_sleep
       - script.stop: prepare_display_for_sleep
       - script.stop: connection_timeout
