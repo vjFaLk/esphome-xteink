@@ -46,8 +46,12 @@ See [ESP-IDF system time](https://docs.espressif.com/projects/esp-idf/en/v5.5/es
 and [ESPHome outgoing API connections](https://esphome.io/components/api/#outgoing-connections).
 
 The RTC layout marker is written only before an orderly sleep with
-Overview visible. A cold boot or a failed update recovers through a full
-snapshot. If a five-minute poll times out while the layout and clock are
-valid, the clock region can still be refreshed. The previously displayed
-readings stay visible. **Display Wake Summary** reports the latest clock
-transfer, awake time, radio state, and scheduled Overview count.
+Overview visible. The RTC also keeps the intended wake minute and the
+last clock minute drawn. That lets an early timer wake use its scheduled
+minute and avoids duplicate clock writes. Each network wake waits for a
+fresh time response along with the boiler states. If a five-minute poll
+times out while the layout and clock are valid, the clock region can
+still be refreshed while the previous readings stay visible. A cold boot
+or a failed update recovers through a full snapshot. **Display Wake
+Summary** reports the latest clock transfer, awake time, radio state,
+and scheduled Overview count.

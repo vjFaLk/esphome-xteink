@@ -23,6 +23,9 @@ globals:
   - id: poll_completed
     type: bool
     initial_value: "false"
+  - id: poll_time_ready
+    type: bool
+    initial_value: "false"
   - id: overview_on_panel
     type: bool
     initial_value: "false"
@@ -54,8 +57,13 @@ script:
       - lambda: |-
           auto &state = esphome::xteink::panel_sleep_state();
           if (!id(timer_wake) && !id(user_requested_display)) state = {};
+          if (id(timer_wake)) esphome::xteink::restore_scheduled_minute();
           id(overview_on_panel) = state.layout == 0x58344331U;
           state.layout = 0;
+          id(ha_time).add_on_time_sync_callback([] {
+            id(poll_time_ready) = true;
+            id(start_display_when_ready).execute();
+          });
           const auto now = id(ha_time).now();
           id(clock_only_wake) = id(timer_wake) && id(overview_on_panel) &&
                                now.is_valid() && now.minute % 5 != 0;
@@ -63,7 +71,15 @@ script:
           condition:
             lambda: return id(clock_only_wake);
           then:
-            - script.execute: clock_region_refresh
+            - if:
+                condition:
+                  lambda: |-
+                    const auto minute = id(ha_time).now().timestamp / 60;
+                    return esphome::xteink::panel_sleep_state().displayed_clock_minute == minute;
+                then:
+                  - script.execute: enter_scheduled_sleep
+                else:
+                  - script.execute: clock_region_refresh
           else:
             - script.execute: start_network_poll
             - if:
@@ -123,10 +139,12 @@ script:
                   - lambda: |-
                       auto &state = esphome::xteink::panel_sleep_state();
                       if (id(x4_display).region_update_succeeded()) {
+                        const auto now = id(ha_time).now();
                         state.clock_updates++;
+                        state.displayed_clock_minute = now.timestamp / 60;
                         state.clock_bytes = id(x4_display).calibration_bytes();
                         state.clock_awake_ms = millis();
-                        state.clock_minute = id(ha_time).now().minute;
+                        state.clock_minute = now.minute;
                         state.clock_wifi_off = id(wifi_client).is_disabled();
                         ESP_LOGI("boiler", "Clock region complete, %u bytes", unsigned(state.clock_bytes));
                       } else {
@@ -174,7 +192,7 @@ script:
           condition:
             lambda: |-
               return id(network_poll_required) && !id(poll_completed) &&
-                     id(ha_time).now().is_valid() && id(battery_level).has_state() &&
+                     id(poll_time_ready) && id(ha_time).now().is_valid() && id(battery_level).has_state() &&
                      std::isfinite(id(boiler_top_temperature).state) &&
                      std::isfinite(id(boiler_bottom_temperature).state) &&
                      id(boiler_mixer).has_state();
@@ -270,7 +288,7 @@ script:
                          unsigned(millis()), valid);
             - deep_sleep.enter:
                 id: ds
-                sleep_duration: !lambda return esphome::xteink::milliseconds_to_next_minute();
+                sleep_duration: !lambda return esphome::xteink::schedule_next_minute();
 
 deep_sleep:
   id: ds
