@@ -39,9 +39,11 @@ keep API encryption enabled. The ESP initiates the native API connection
 as soon as Wi-Fi is available. Home Assistant 2026.10 or later needs an
 existing encrypted ESPHome entry for this device and must accept TCP
 connections from it on port 6054. A boot-time panel gate keeps the previous
-image visible while Home Assistant responds. A complete snapshot renders
-immediately. The 8-second deadline shows the OFFLINE screen if the snapshot
-is incomplete. Keep `wifi.enable_on_boot: false`,
+image visible while Home Assistant responds. Fresh time, battery, both
+boiler temperatures, and the mixer state release the Overview. Auxiliary
+controls appear when their own states are available. The 8-second deadline
+shows the OFFLINE screen if the required snapshot is incomplete.
+Keep `wifi.enable_on_boot: false`,
 `retain_display_controller: false`, and the board's configured battery
 latch for timer wakes. The ESP32-S3 RTC keeps system time during deep sleep.
 See [ESP-IDF system time](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/api-reference/system/system_time.html)

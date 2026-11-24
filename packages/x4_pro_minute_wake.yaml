@@ -187,7 +187,13 @@ script:
             - logger.log:
                 level: WARN
                 tag: boiler
-                format: "Home Assistant snapshot timed out"
+                format: "Home Assistant snapshot timed out (time %d, battery %d, top %d, bottom %d, mixer %d)"
+                args:
+                  - id(poll_time_ready) && id(ha_time).now().is_valid()
+                  - id(battery_level).has_state()
+                  - std::isfinite(id(boiler_top_temperature).state)
+                  - std::isfinite(id(boiler_bottom_temperature).state)
+                  - id(boiler_mixer).has_state()
             - lambda: |-
                 if (id(timer_wake)) id(network_poll_required) = false;
             - if:
@@ -225,10 +231,7 @@ script:
               return id(network_poll_required) && !id(poll_completed) &&
                      id(poll_time_ready) && id(ha_time).now().is_valid() && id(battery_level).has_state() &&
                      std::isfinite(id(boiler_top_temperature).state) &&
-                     std::isfinite(id(boiler_bottom_temperature).state) &&
-                     std::isfinite(id(bath_temperature).state) &&
-                     (id(bath_timer_state).state == "active" || id(bath_timer_state).state == "idle" ||
-                      id(bath_timer_state).state == "paused") && id(boiler_mixer).has_state();
+                     std::isfinite(id(boiler_bottom_temperature).state) && id(boiler_mixer).has_state();
           then:
             - lambda: |-
                 id(poll_completed) = true;
