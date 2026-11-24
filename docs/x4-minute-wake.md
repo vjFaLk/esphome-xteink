@@ -35,8 +35,10 @@ changes.
 
 Set the local `boiler_ha_host` substitution to the Home Assistant IP and
 keep API encryption enabled. The ESP initiates the native API connection
-as soon as Wi-Fi is available. The required states and valid time gate the
-Overview render. There is an 8-second failure deadline, and a successful
+as soon as Wi-Fi is available. Home Assistant 2026.10 or later needs an
+existing encrypted ESPHome entry for this device and must accept TCP
+connections from it on port 6054. The required states and valid time gate
+the Overview render. There is an 8-second failure deadline, and a successful
 snapshot proceeds immediately. Keep `wifi.enable_on_boot: false`,
 `retain_display_controller: false`, and the board's configured battery
 latch for timer wakes. The ESP32-S3 RTC keeps system time during deep sleep.
