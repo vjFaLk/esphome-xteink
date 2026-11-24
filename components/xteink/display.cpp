@@ -302,7 +302,11 @@ bool XteinkDisplay::begin_masked_refresh_(bool force, bool preview) {
   if (stable) settings.palette = measuredStablePalette(stable_luminance_);
   const bool planned = regional ? frames_.planRegion(selected_region_, settings)
       : preview ? frames_.planPreview(settings.margin) : frames_.plan(settings, force);
-  if (!planned) return false;
+  if (!planned) {
+    ESP_LOGW(TAG, "Could not plan %s refresh in render mode %d", regional ? "regional" : "full or differential",
+             requested_mode_);
+    return false;
+  }
   if (!frames_.driven) return preview || frames_.commit();
 
   const auto snapshot = freeink::getXteinkPanelMtpSnapshot();
@@ -315,6 +319,7 @@ bool XteinkDisplay::begin_masked_refresh_(bool force, bool preview) {
       (!preview && stable && !stableGrayBank(bw, stable_render_frames_, gray))) {
     frames_.phase = Phase::Idle;
     factory_error_ = "Factory table or pulse profile unavailable";
+    ESP_LOGW(TAG, "%s", factory_error_);
     return false;
   }
   if (preview) bw = directBwPreviewBank();
@@ -322,6 +327,7 @@ bool XteinkDisplay::begin_masked_refresh_(bool force, bool preview) {
   if (!masked_refresh_.plan(bw, gray, stable || relative ? 96 : 160, 40, regional || windowed_upload_)) {
     frames_.phase = Phase::Idle;
     masked_result_ = "Source budget exceeds three zones";
+    ESP_LOGW(TAG, "%s", masked_result_);
     return false;
   }
   if (!acquire_controller_(false)) {
@@ -378,6 +384,9 @@ bool XteinkDisplay::poll_masked_refresh_() {
     return true;
   }
   parent_->display().endControllerSession();
+  ESP_LOGD(TAG, "%s refresh %s, %u bytes in %u ms",
+           regional ? "Regional" : "Frame", tuned_completed_ ? "complete" : "failed",
+           unsigned(masked_bytes_), unsigned(masked_duration_));
   if (regional) {
     // A regional update does not establish the appearance of the rest of
     // the display. The next normal update must build a fresh full frame.

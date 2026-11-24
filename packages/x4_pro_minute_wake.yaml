@@ -175,11 +175,12 @@ script:
     then:
       - lambda: id(x4_display).end_virtual_update();
       - lvgl.resume:
+      - lvgl.widget.redraw:
 
   - id: connection_timeout
     mode: restart
     then:
-      - delay: 8s
+      - delay: 14s
       - if:
           condition:
             lambda: return id(network_poll_required) && !id(poll_completed);
@@ -205,6 +206,7 @@ script:
                       id(overview_on_panel) = false;
                       id(offline_visible) = true;
                       id(display_resumed) = true;
+                      id(x4_display).select_region(0, 0, 800, 480, true);
                   - lvgl.widget.show: offline_overlay
                   - script.execute: update_clock
                   - script.execute: resume_panel
@@ -237,6 +239,7 @@ script:
                 id(poll_completed) = true;
                 id(overview_on_panel) = false;
                 id(offline_on_panel) = false;
+                if (id(offline_visible)) id(x4_display).clear_region();
                 id(offline_visible) = false;
                 id(sleep_page_update_count) = id(x4_display).update_count;
                 auto &state = esphome::xteink::panel_sleep_state();
@@ -273,16 +276,18 @@ script:
       - wait_until:
           condition:
             lambda: |-
-              return !id(timer_wake) || (id(x4_display).update_count > id(sleep_page_update_count) &&
-                                         id(x4_display).has_known_frame());
+              return !id(timer_wake) || (overview
+                  ? id(x4_display).update_count > id(sleep_page_update_count) && id(x4_display).has_known_frame()
+                  : id(x4_display).region_update_finished());
           timeout: 10s
       - if:
           condition:
             lambda: return id(timer_wake);
           then:
             - lambda: |-
-                const bool complete = id(x4_display).update_count > id(sleep_page_update_count) &&
-                                      id(x4_display).has_known_frame();
+                const bool complete = overview
+                    ? id(x4_display).update_count > id(sleep_page_update_count) && id(x4_display).has_known_frame()
+                    : id(x4_display).region_update_succeeded();
                 id(overview_on_panel) = overview && complete;
                 id(offline_on_panel) = !overview && complete;
                 if (id(overview_on_panel)) esphome::xteink::panel_sleep_state().scheduled_overviews++;
@@ -318,7 +323,7 @@ script:
                 then:
                   - lambda: |-
                       id(overview_on_panel) = !id(offline_visible) && id(x4_display).has_known_frame();
-                      id(offline_on_panel) = id(offline_visible) && id(x4_display).has_known_frame();
+                      id(offline_on_panel) = id(offline_visible) && id(x4_display).region_update_succeeded();
       - lvgl.pause:
 
   - id: enter_scheduled_sleep

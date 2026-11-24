@@ -16,7 +16,8 @@ Calibration configurations can add Home Assistant controls through
 
 Set `rendering_mode` on the display in YAML to `bw`, `bw_tuned`,
 `single_settle`, or `dither_then_settle`. The gray modes require
-`grayscale: true` and the corresponding calibrated profile. Use 1-bit
+`grayscale: true` and the corresponding calibrated profile. On the X4 Pro,
+setting the mode enables the boot-time factory table read. Use 1-bit
 fonts for B/W text to avoid dithering glyph edges. The boiler derives font
 bit depth from its configured mode and uses 1-bit text for the clock.
 

@@ -1,7 +1,8 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import display
-from esphome.const import CONF_ID, CONF_LAMBDA
+from esphome.const import CONF_ID, CONF_LAMBDA, CONF_MODEL
+from esphome.core import CORE
 
 from . import CONF_XTEINK_ID, Xteink, get_model, xteink_ns, FILTER_SOURCE_FILES  # noqa: F401
 
@@ -140,6 +141,10 @@ async def to_code(config):
     cg.add(var.set_grayscale(config[CONF_GRAYSCALE]))
     if CONF_RENDERING_MODE in config:
         cg.add(var.set_initial_rendering_mode(config[CONF_RENDERING_MODE]))
+        if CORE.config["xteink"][CONF_MODEL] == "x4_pro":
+            # Factory-derived modes and absolute region updates need the
+            # panel's temperature-selected table in production too.
+            cg.add_build_flag("-DFREEINK_CAPTURE_PANEL_MTP=1")
     cg.add(var.set_grayscale_windowed_upload(
         config.get(CONF_GRAYSCALE_WINDOWED_UPLOAD, config[CONF_GRAYSCALE])
     ))
