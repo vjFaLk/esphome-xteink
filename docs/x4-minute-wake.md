@@ -1,0 +1,51 @@
+# Minute wakes on the X4 Pro
+
+The [boiler wake package](../packages/x4_pro_minute_wake.yaml) schedules the
+next wake on the minute boundary. A timer wake with a known Overview and
+valid time refreshes just the clock area on minutes 1–4 of each five-minute
+period. On minute 0 it enables Wi-Fi and updates the Overview from
+Home Assistant. A user-button wake starts the interactive path.
+
+## Region updates
+
+Use `select_region(x, y, width, height)` in physical panel coordinates,
+provide the contents of that rectangle, then let LVGL call `update()` at
+the end of its draw or call `update()` after painting directly. A selection
+requests one absolute update. All pixels in the rectangle are driven,
+including its background, so an old glyph is erased even when the glyph
+gets narrower. Use `region_update_finished()` and
+`region_update_succeeded()` to check completion. Call `clear_region()`
+to resume normal rendering.
+
+The controller can sleep and lose its RAM. Each regional pass writes both
+planes for the selected rows and supplies a hold selector for the rest of
+those scan lines. The call leaves whole-frame history unknown. The next
+ordinary update reconstructs it. No display planes or image buffers are
+retained between boots.
+
+## Boiler wiring
+
+The package assumes the boiler's `x4_display`, `x4_battery`, `wifi_client`,
+`ha_time`, `overview_page`, `clock_label`, and the existing input, sleep,
+and Overview synchronization scripts. It replaces the old timer,
+retained-frame bootstrap, and polling scripts. The clock rectangle
+(636, 10, 76, 34) covers the boiler Overview label and its white
+background. Adjust it and bump the RTC layout tag if the page layout
+changes.
+
+Set the local `boiler_ha_host` substitution to the Home Assistant IP and
+keep API encryption enabled. The ESP initiates the native API connection
+as soon as Wi-Fi is available. The required states and valid time gate the
+Overview render. There is an 8-second failure deadline, and a successful
+snapshot proceeds immediately. Keep `wifi.enable_on_boot: false`,
+`retain_display_controller: false`, and the board's configured battery
+latch for timer wakes. The ESP32-S3 RTC keeps system time during deep sleep.
+See [ESP-IDF system time](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32s3/api-reference/system/system_time.html)
+and [ESPHome outgoing API connections](https://esphome.io/components/api/#outgoing-connections).
+
+The RTC layout marker is written only before an orderly sleep with
+Overview visible. A cold boot or a failed update recovers through a full
+snapshot. If a five-minute poll times out while the layout and clock are
+valid, the clock region can still be refreshed. The previously displayed
+readings stay visible. **Display Wake Summary** reports the latest clock
+transfer, awake time, radio state, and scheduled Overview count.
