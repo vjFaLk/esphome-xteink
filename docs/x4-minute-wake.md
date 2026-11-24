@@ -56,3 +56,9 @@ still be refreshed while the previous readings stay visible. A cold boot
 or a failed update recovers through a full snapshot. **Display Wake
 Summary** reports the latest clock transfer, awake time, radio state,
 and scheduled Overview count.
+
+On the boiler display, the 18:35–18:40 verification cycle recorded four
+clock-only wakes with Wi-Fi disabled. The last clock update sent 6,800
+bytes and completed 3.43 seconds after boot. The 18:35 Overview received
+its Home Assistant snapshot 6.61 seconds after boot and finished before
+the device went back to sleep.
