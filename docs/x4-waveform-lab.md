@@ -59,10 +59,17 @@ counts, transfer size, and duration.
 ## Touch preview on the Light pane
 
 With either gray mode selected, a touch on the Light pane enables ordered
-B/W for changed pixels. The display coalesces slider motion while an update
-is busy. After release it waits for the final LVGL draw and settles the
-affected area in the selected gray mode. Frontlight settings still commit
-on slider release.
+B/W for changed pixels. The preview uses one direct 16-frame pulse toward
+black or white. The display coalesces slider motion while an update is busy.
+After release it waits for the final LVGL draw and settles the affected area
+using the normal waveform for the selected gray mode. Frontlight settings
+still commit on slider release.
+
+Windowed uploads are on by default with grayscale enabled. Masked passes
+upload both planes only for the affected rows and activate the same rows.
+Each line is still full width. The panel hold after split B/W still covers
+the whole panel. Set `grayscale_windowed_upload: false` for full-plane
+uploads. **Regions** reports the last activation window.
 
 The boiler package binds `begin_touch_preview()` and `end_touch_preview()`
 to `x4_touch` while `light_page` is active. On boiler configurations that
