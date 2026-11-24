@@ -23,7 +23,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_grayscale_strategy(int) {
   }  // legacy YAML accepted; new modes await calibration
   void set_grayscale_settle_time(uint32_t) {}
-  void set_grayscale_windowed_upload(bool) {}
+  void set_grayscale_windowed_upload(bool enabled) { windowed_upload_ = enabled; }
   bool set_rendering_mode(int mode);
   void set_grayscale_update_margin(uint8_t pixels) {
     grayscale_update_margin_ = std::min<uint8_t>(pixels, 2);
@@ -207,6 +207,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   enum class TouchPhase : uint8_t { Idle, Dragging, Released };
   TouchPhase touch_phase_{TouchPhase::Idle};
   bool driving_touch_preview_{false};
+  bool windowed_upload_{false};
   bool render_demo_{false}, render_demo_marker_{false};
   const char* masked_result_{"idle"};
   uint32_t masked_started_{0}, masked_duration_{0}, masked_bytes_{0};

@@ -273,14 +273,15 @@ bool XteinkDisplay::begin_masked_refresh_(bool force, bool preview) {
       snapshot.data, snapshot.size, snapshot.verified,
       freeink::getXteinkDisplayProbeDiag().ver[2], temp);
   LutBank bw, gray{};
-  if (!profile.power.valid || !tuneFactoryBw(profile.rows, TunedBoilerWaveform, bw) ||
+  if (!profile.power.valid || (!preview && !tuneFactoryBw(profile.rows, TunedBoilerWaveform, bw)) ||
       (!preview && stable && !stableGrayBank(bw, stable_render_frames_, gray))) {
     frames_.phase = Phase::Idle;
     factory_error_ = "Factory table or pulse profile unavailable";
     return false;
   }
+  if (preview) bw = directBwPreviewBank();
   if (!preview && relative) gray = candidates(RelativePulses);
-  if (!masked_refresh_.plan(bw, gray, gray_mode_() ? 96 : 160, 40)) {
+  if (!masked_refresh_.plan(bw, gray, gray_mode_() ? 96 : 160, 40, windowed_upload_)) {
     frames_.phase = Phase::Idle;
     masked_result_ = "Source budget exceeds three zones";
     return false;
@@ -788,10 +789,12 @@ void XteinkDisplay::log_calibration_waveforms() const {
 std::string XteinkDisplay::calibration_region() const {
   if (!calibration_active_ && masked_mode_()) {
     const auto r = frames_.requested, e = frames_.expanded;
+    const auto active = masked_refresh_.lastWindow();
     char text[160];
     std::snprintf(text, sizeof(text),
-                  "requested %u,%u %ux%u; mask %u,%u %ux%u; activation 0,0 800x480; hold code 0",
-                  r.x, r.y, r.width, r.height, e.x, e.y, e.width, e.height);
+                  "requested %u,%u %ux%u; mask %u,%u %ux%u; activation %u,%u %ux%u; hold code 0",
+                  r.x, r.y, r.width, r.height, e.x, e.y, e.width, e.height,
+                  active.x, active.y, active.width, active.height);
     return text;
   }
   if (!lab_) return "idle";

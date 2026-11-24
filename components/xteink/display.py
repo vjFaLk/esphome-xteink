@@ -71,7 +71,7 @@ CONFIG_SCHEMA = display.FULL_DISPLAY_SCHEMA.extend(
         cv.Optional(CONF_GRAYSCALE_SETTLE_TIME, default="5s"): (
             cv.positive_time_period_milliseconds
         ),
-        cv.Optional(CONF_GRAYSCALE_WINDOWED_UPLOAD, default=False): cv.boolean,
+        cv.Optional(CONF_GRAYSCALE_WINDOWED_UPLOAD): cv.boolean,
         cv.Optional(CONF_GRAYSCALE_UPDATE_MARGIN, default=0): cv.int_range(min=0, max=2),
         cv.Optional(CONF_DITHER_LUMINANCE): cv.All(
             cv.ensure_list(cv.int_range(min=0, max=254)), cv.Length(min=6, max=6), _luminances
@@ -99,7 +99,7 @@ def _final_validate(config):
         )
     if not config[CONF_GRAYSCALE] and CONF_GRAYSCALE_STRATEGY in config:
         raise cv.Invalid("grayscale_strategy requires grayscale: true")
-    if config[CONF_GRAYSCALE_WINDOWED_UPLOAD] and not config[CONF_GRAYSCALE]:
+    if config.get(CONF_GRAYSCALE_WINDOWED_UPLOAD, False) and not config[CONF_GRAYSCALE]:
         raise cv.Invalid("grayscale_windowed_upload requires grayscale: true")
     if (CONF_STABLE_GRAY_FRAMES in config) != (CONF_STABLE_GRAY_LUMINANCE in config):
         raise cv.Invalid("stable_gray_frames and stable_gray_luminance must be set together")
@@ -121,7 +121,9 @@ async def to_code(config):
     cg.add(var.set_refresh_mode(config[CONF_REFRESH_MODE]))
     cg.add(var.set_full_refresh_every(config[CONF_FULL_REFRESH_EVERY]))
     cg.add(var.set_grayscale(config[CONF_GRAYSCALE]))
-    cg.add(var.set_grayscale_windowed_upload(config[CONF_GRAYSCALE_WINDOWED_UPLOAD]))
+    cg.add(var.set_grayscale_windowed_upload(
+        config.get(CONF_GRAYSCALE_WINDOWED_UPLOAD, config[CONF_GRAYSCALE])
+    ))
     cg.add(var.set_grayscale_update_margin(config[CONF_GRAYSCALE_UPDATE_MARGIN]))
     cg.add(
         var.set_grayscale_strategy(
