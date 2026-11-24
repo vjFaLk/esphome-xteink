@@ -47,9 +47,10 @@ and [ESPHome outgoing API connections](https://esphome.io/components/api/#outgoi
 
 The RTC layout marker is written only before an orderly sleep with
 Overview visible. The RTC also keeps the intended wake minute and the
-last clock minute drawn. That lets an early timer wake use its scheduled
-minute and avoids duplicate clock writes. Each network wake waits for a
-fresh time response along with the boiler states. If a five-minute poll
+last clock minute drawn. On the panel, the RTC wall clock jumped after
+deep sleep. A timer wake uses its programmed deadline when the RTC differs
+from it and skips duplicate clock writes. Each network wake gets fresh
+time together with the boiler states. If a five-minute poll
 times out while the layout and clock are valid, the clock region can
 still be refreshed while the previous readings stay visible. A cold boot
 or a failed update recovers through a full snapshot. **Display Wake

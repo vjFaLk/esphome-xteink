@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <sys/time.h>
+#include <esp_timer.h>
 
 namespace esphome::xteink {
 
@@ -32,12 +33,16 @@ inline uint32_t schedule_next_minute() {
 
 inline void restore_scheduled_minute() {
   const auto scheduled = panel_sleep_state().scheduled_epoch;
-  // A timer wake was scheduled for this boundary. RTC calibration after
-  // deep sleep can make the observed clock read earlier than that boundary.
+  if (!scheduled) return;
+  // RTC calibration after deep sleep can shift wall time in either
+  // direction. Anchor timer wakes to their programmed deadline. Keep the
+  // time spent booting so it is counted in the following sleep interval.
   timeval now{};
   gettimeofday(&now, nullptr);
-  if (scheduled > now.tv_sec) {
-    const timeval boundary{scheduled, 100000};
+  const int64_t since_boundary_us = esp_timer_get_time() + 100000;
+  const time_t expected = scheduled + since_boundary_us / 1000000;
+  if (now.tv_sec < scheduled || now.tv_sec > expected + 2) {
+    const timeval boundary{expected, suseconds_t(since_boundary_us % 1000000)};
     settimeofday(&boundary, nullptr);
   }
 }
