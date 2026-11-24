@@ -107,11 +107,7 @@ the stock bootloader and partition table, as with any ESP32 board.
   always at least a half refresh; later ones can be fast (partial/diff) updates.
 - `refresh_mode` avoids a boot lambda just to select the waveform, while `full_refresh_every`
   provides periodic cleanup. `grayscale: true` accepts continuous luminance on X4 Pro.
-  `grayscale_strategy: native` (the default) uses the accurate but slow panel waveform;
-  `grayscale_strategy: dither` converts luminance through a stable ordered pattern and keeps
-  the normal fast differential waveform. `adaptive` uses dither while interacting, then runs
-  one native-gray settle after `grayscale_settle_time` of quiet. Unsupported native-gray
-  variants log and render monochrome.
+  Set `rendering_mode` to select the X4 Pro renderer.
 - `it.update_count` counts refreshes, handy for "full refresh every N updates".
 - `deep_sleep` needs nothing extra in your YAML: on power-down the hub parks the panel (DSLP),
   drives the X4's GPIO13 battery latch LOW (a real power-off on battery, like CrossPoint;
@@ -174,108 +170,13 @@ then compile the examples (`cd examples && esphome compile x4.yaml` …) and ope
 
 MIT licensed; see `LICENSE` and `NOTICE`.
 
-## X4 Pro waveform calibration branch
+## X4 Pro rendering and calibration
 
-This branch stops at the physical calibration checkpoint. Normal boiler output
-uses ordered B/W preview; the two grayscale mode requests remain explicitly gated
-until measured palettes, hold behavior, and preparation waveforms are accepted.
-Selective minute wakes and retained-controller rendering are a later stage.
+Set `rendering_mode: dither_then_settle` and `grayscale: true` for the
+calibrated X4 Pro renderer. The [rendering guide](docs/x4-waveform-lab.md)
+covers the supported modes and the C++ calibration entry point. The
+[minute wake guide](docs/x4-minute-wake.md) describes the boiler integration.
 
-Dependencies are pinned Git submodules in `components/xteink/dependencies`:
-FreeInk owns board communication and the raw UC8279 transport; `xteink-rendering`
-owns deterministic quantization, two 8-bit frame histories, masks, waveforms,
-pipeline validation, and calibration layouts. ESPHome owns LVGL/HA integration,
-display scheduling, and sleep arbitration. `dependencies.json` checks the exact
-revisions even when ESPHome's external-component clone omits submodule init.
-
-Clone with `git clone --recurse-submodules`. For an existing checkout, run
-`git submodule update --init --recursive`. No patch/sync step is used.
-
-The included `packages/x4_waveform_lab.yaml` binds to the boiler configuration's
-`x4_display`, `ds`, `ota_hold`, LVGL, and named sleep/UI scripts. It is an optional
-boiler-specific diagnostic package, not a generic board package. Entering the lab
-pauses LVGL and prevents sleep. Every waveform is manually requested. Exiting
-waits for the active waveform and pump shutdown, resets legacy controller state,
-and rebuilds the boiler page before releasing normal sleep scheduling.
-
-Use **Waveform Rebuild B-W Starts** first. A/B/C show pure black and pure white
-starts in the upper 75 rows, with ordered ramps in the bottom 15 rows. Candidate C
-crosses x752. **Repeat With Held References** drives the candidates while keeping
-white/black/gray references on selector 00. **Rotate Candidates** tests transitions
-without resetting starts. Rebuild after changing pulse parameters so labels stay
-accurate. Raw frame counts are not milliseconds; rail 1/2 polarity and rail 3's
-meaning are not established for the matching silicon. Source VSS is not assumed
-to produce zero field relative to VCOM.
-
-Default activation omits PTL and spans complete visible lines/full height.
-Vertical-window and cropped full-line upload experiments are off by default.
-Uploads and activation windows are separate. Cropping is used only when the
-vertical-window experiment is also enabled, so a full-height activation cannot
-expose stale selectors outside the uploaded rows. A cropped upload always
-restores a full-width activation window over the uploaded rows. No horizontal
-activation restriction is offered.
-
-Enter six observed luminances in the **Measured A/B/C Black/White Start** controls
-only after measuring/comparing the screen. **Waveform Measured Shade Order** sorts
-those inputs and reports gaps. No calibrated levels or ordering are preselected.
-Duration, RAM-plane bytes, mask counts, regions, pipeline, completion, and cycles
-are separate diagnostics. Uploaded bytes count DTM payloads, including hidden gate
-padding; register/LUT command traffic is excluded.
-
-The custom LUT interpretation is experimental. The exact UC8279 datasheet was not
-available; recovered 7-byte records and a controller emulator support the proposed
-packing, but do not validate repeat, source/VCOM voltages, floating/hold options,
-or waveform-end behavior on this unit. The unresolved QY 290-byte split is not
-used. Host tests prove software behavior; panel photographs/measurements remain
-necessary before using these waveforms in normal rendering.
-
-Host validation:
-
-```sh
-python3 components/xteink/dependencies/rendering/test/run.py
-python3 components/xteink/dependencies/freeink/libs/display/FreeInkDisplay/test/host/run_x4_transport.py
-```
-
-### Updated waveform inspection and B/W timing
-
-The second calibration firmware uses **opposite prefix → A/B/C candidate → hold**.
-The observed panel behavior is code 1 darkens, 2 brightens, 0 holds references in
-current tests; no stable palette or noise cure is established. Rebuild resets
-rotation; Repeat preserves it; Assignments reports the actual last mapping.
-
-HA exposes A/B/C/VCOM/Hold **Binary** traces and **LUT Hex** records, plus equivalent
-B/W black/white/VCOM diagnostics. These describe the saved, actually programmed
-register payloads. The compact trace contains two-bit codes, duration counts,
-and group/state repeats; the hex record is the exact 49 bytes. **Waveform Export
-Binary LUTs** prints all seven raw binary groups to logs without refreshing.
-Factory OTP preparation correctly reports its unrecovered payload unavailable.
-
-For the B/W noise experiment, select **Waveform B-W Preparation → Programmable
-B-W Drive**, change **Waveform B-W Frames** (1–63) and **Waveform B-W Repeats**
-(1–16), then press Rebuild. The same endpoint duration applies to black and white;
-code 1 drives black and code 2 drives white, followed by one hold count. Factory
-OTP remains the baseline comparison. Frames/Repetitions affect preparation only,
-not A/B/C settle durations. Inspect the upper 75 solid rows of each test patch;
-the bottom 15 contain intentional ordered ramps.
-
-### Inverted-image preparation phase
-
-Programmable B/W preparation now performs **inverted image → requested B/W image
-→ hold**. **Waveform B-W Inversion Frames** controls the first phase (0–63;
-zero disables it for comparison). **Waveform B-W Frames** continues to control
-the final target phase. **Waveform B-W Repeats** repeats the complete cycle.
-Inversion and target now default to 20 counts, with one repeat. Existing saved
-values are retained when the device's preference storage permits it.
-
-The user's live settings are exported before deployment and restored through the
-authenticated device API. Preference storage reported insufficient space, so
-exported settings remain necessary backup evidence; no NVS erase is performed.
-
-### Conditioned B/W and starting-image controls
-
-The fourth calibration round adds a separate **Conditioned B-W Drive** option,
-explicit white/black/reference/random-image buttons, exact last-image replay,
-power-safe ownership handoff and command/BUSY timing export. The original simple
-programmable recipe and Factory OTP remain comparison options. See the
-[testing guide](docs/x4-waveform-lab.md) for the full recipe, every control's
-expected effect, RAM-only experimental settings, and timing interpretation.
+The driver reads the temperature-selected factory table at boot. The
+pinned [C++ rendering library](components/xteink/dependencies/rendering/README.md)
+owns the default calibration and the interface for measured replacement profiles.

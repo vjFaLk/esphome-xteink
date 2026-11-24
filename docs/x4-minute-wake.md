@@ -1,10 +1,10 @@
 # Minute wakes on the X4 Pro
 
 The [boiler wake package](../packages/x4_pro_minute_wake.yaml) schedules the
-next wake on the minute boundary. A timer wake with a known Overview or
-OFFLINE screen and valid time refreshes just the clock area on minutes 1–4
-of each five-minute period. On minute 0 it enables Wi-Fi and updates the Overview from
-Home Assistant. A user-button wake starts the interactive path.
+next wake on the minute boundary. Minutes 1–4 refresh the clock with Wi-Fi
+off. If there is no valid time yet, those wakes leave the panel untouched.
+On minute 0 it enables Wi-Fi and updates the Overview from Home Assistant.
+A user-button wake starts the interactive path.
 
 ## Region updates
 
@@ -22,12 +22,13 @@ planes for the selected rows and supplies a hold selector for the rest of
 those scan lines. The call leaves whole-frame history unknown. The next
 ordinary update reconstructs it. No display planes or image buffers are
 retained between boots. Pass `true` as the fifth argument to select a
-single B/W pass. The boiler uses that path with a 1-bit clock font.
+single B/W pass. The boiler clock uses the configured mode, with
+antialiased text in Dither Then Settle and 1-bit text in B/W modes.
 
 ## Boiler wiring
 
 The package assumes the boiler's `x4_display`, `x4_battery`, `wifi_client`,
-`ha_time`, `overview_page`, `clock_label`, `offline_clock_label`, and the existing input, sleep,
+`ha_time`, `overview_page`, `clock_label`, `offline_overlay`, and the existing input, sleep,
 and Overview synchronization scripts. It replaces the old timer,
 retained-frame bootstrap, and polling scripts. The clock rectangle
 (636, 10, 76, 34) covers the boiler Overview label and its white
@@ -42,8 +43,9 @@ connections from it on port 6054. A boot-time panel gate keeps the previous
 image visible while Home Assistant responds. Fresh time, battery, both
 boiler temperatures, and the mixer state release the Overview. Auxiliary
 controls appear when their own states are available. A 14-second deadline
-allows the first reconnect retry and shows OFFLINE with a B/W pass
-if the required snapshot is incomplete.
+allows a reconnect retry. A timed-out five-minute poll updates the header
+with OFFLINE and the clock, leaving the rest of the previous Overview
+visible. The next successful Overview removes the message.
 Keep `wifi.enable_on_boot: false`,
 `retain_display_controller: false`, and the board's configured battery
 latch for timer wakes. The ESP32-S3 RTC keeps system time during deep sleep.
@@ -51,16 +53,10 @@ See [ESP-IDF system time](https://docs.espressif.com/projects/esp-idf/en/v5.5/es
 and [ESPHome outgoing API connections](https://esphome.io/components/api/#outgoing-connections).
 
 The RTC layout marker is written only before an orderly sleep with
-Overview or OFFLINE visible. The RTC also keeps the intended wake minute and the
+Overview or its OFFLINE header visible. The RTC also keeps the intended wake minute and the
 last clock minute drawn. On the panel, the RTC wall clock jumped after
 deep sleep. A timer wake uses its programmed deadline when the RTC differs
 from it and skips duplicate clock writes. Each network wake gets fresh
 time together with the boiler states. A cold boot or a failed update
 recovers through a full snapshot. The `boiler` log reports the most recent
 clock write and the snapshot timing.
-
-On the boiler display, the 18:35–18:40 verification cycle recorded four
-clock-only wakes with Wi-Fi disabled. The last clock update sent 6,800
-bytes and completed 3.43 seconds after boot. The 18:35 Overview received
-its Home Assistant snapshot 6.61 seconds after boot and finished before
-the device went back to sleep.

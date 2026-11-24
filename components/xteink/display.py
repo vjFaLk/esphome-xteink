@@ -13,30 +13,7 @@ XteinkDisplay = xteink_ns.class_(
 )
 XteinkDisplayRef = XteinkDisplay.operator("ref")
 
-CONF_DITHER_LUMINANCE = "dither_luminance"
-CONF_DITHER_CURVES = "dither_curves"
 CONF_RENDERING_MODE = "rendering_mode"
-CONF_STABLE_GRAY_FRAMES = "stable_gray_frames"
-CONF_STABLE_GRAY_LUMINANCE = "stable_gray_luminance"
-
-
-def _ordered_stable_values(values):
-    if values != sorted(set(values)):
-        raise cv.Invalid("stable gray profile values must increase from G1 to G3")
-    return values
-
-def _luminances(values):
-    active = [value for value in values if value]
-    if not active or len(set(active)) != len(active):
-        raise cv.Invalid("dither_luminance requires distinct active interior shades; 0 omits a shade")
-    return values
-
-def _coverage_curve(values):
-    if not values:
-        return values
-    if len(values) != 17 or values[0] != 0 or values[-1] != 255 or values != sorted(values):
-        raise cv.Invalid("each dither curve must have 17 nondecreasing steps from 0 to 255, or be empty")
-    return values
 
 CONF_REFRESH_MODE = "refresh_mode"
 CONF_FULL_REFRESH_EVERY = "full_refresh_every"
@@ -81,22 +58,7 @@ CONFIG_SCHEMA = display.FULL_DISPLAY_SCHEMA.extend(
             cv.positive_time_period_milliseconds
         ),
         cv.Optional(CONF_GRAYSCALE_WINDOWED_UPLOAD): cv.boolean,
-        cv.Optional(CONF_GRAYSCALE_UPDATE_MARGIN, default=0): cv.int_range(min=0, max=2),
-        cv.Optional(CONF_DITHER_LUMINANCE): cv.All(
-            cv.ensure_list(cv.int_range(min=0, max=254)), cv.Length(min=6, max=6), _luminances
-        ),
-        cv.Optional(CONF_DITHER_CURVES): cv.All(
-            cv.ensure_list(cv.All(cv.ensure_list(cv.uint8_t), _coverage_curve)),
-            cv.Length(min=2, max=7),
-        ),
-        cv.Optional(CONF_STABLE_GRAY_FRAMES): cv.All(
-            cv.ensure_list(cv.int_range(min=1, max=30)), cv.Length(min=3, max=3),
-            _ordered_stable_values,
-        ),
-        cv.Optional(CONF_STABLE_GRAY_LUMINANCE): cv.All(
-            cv.ensure_list(cv.int_range(min=1, max=254)), cv.Length(min=3, max=3),
-            _ordered_stable_values,
-        ),
+        cv.Optional(CONF_GRAYSCALE_UPDATE_MARGIN): cv.int_range(min=0, max=2),
     }
 ).extend(cv.polling_component_schema("1s"))
 
@@ -115,18 +77,6 @@ def _final_validate(config):
         raise cv.Invalid("gray rendering modes require grayscale: true")
     if mode in ("single_settle", "dither_then_settle", "bw_tuned") and get_model() != "x4_pro":
         raise cv.Invalid("this rendering mode requires the X4 Pro")
-    if mode == "dither_then_settle" and CONF_DITHER_LUMINANCE not in config:
-        raise cv.Invalid("dither_then_settle requires measured dither_luminance")
-    if mode == "single_settle" and CONF_STABLE_GRAY_LUMINANCE not in config:
-        raise cv.Invalid("single_settle requires a measured stable gray profile")
-    if (CONF_STABLE_GRAY_FRAMES in config) != (CONF_STABLE_GRAY_LUMINANCE in config):
-        raise cv.Invalid("stable_gray_frames and stable_gray_luminance must be set together")
-    if CONF_DITHER_CURVES in config:
-        if CONF_DITHER_LUMINANCE not in config:
-            raise cv.Invalid("dither_curves requires measured dither_luminance")
-        pairs = 1 + sum(value > 0 for value in config[CONF_DITHER_LUMINANCE])
-        if len(config[CONF_DITHER_CURVES]) != pairs:
-            raise cv.Invalid(f"dither_curves requires {pairs} entries for the active shade pairs")
     return config
 
 
@@ -148,7 +98,8 @@ async def to_code(config):
     cg.add(var.set_grayscale_windowed_upload(
         config.get(CONF_GRAYSCALE_WINDOWED_UPLOAD, config[CONF_GRAYSCALE])
     ))
-    cg.add(var.set_grayscale_update_margin(config[CONF_GRAYSCALE_UPDATE_MARGIN]))
+    if CONF_GRAYSCALE_UPDATE_MARGIN in config:
+        cg.add(var.set_grayscale_update_margin(config[CONF_GRAYSCALE_UPDATE_MARGIN]))
     cg.add(
         var.set_grayscale_strategy(
             config.get(CONF_GRAYSCALE_STRATEGY, GRAYSCALE_STRATEGIES["native"])
@@ -159,15 +110,6 @@ async def to_code(config):
             config[CONF_GRAYSCALE_SETTLE_TIME].total_milliseconds
         )
     )
-    for shade, luma in enumerate(config.get(CONF_DITHER_LUMINANCE, [])):
-        cg.add(var.set_dither_luminance(shade, luma))
-    for pair, curve in enumerate(config.get(CONF_DITHER_CURVES, [])):
-        for step, luma in enumerate(curve):
-            cg.add(var.set_dither_curve(pair, step, luma))
-    for shade, (frames, luma) in enumerate(zip(
-        config.get(CONF_STABLE_GRAY_FRAMES, []), config.get(CONF_STABLE_GRAY_LUMINANCE, [])
-    )):
-        cg.add(var.set_stable_gray_profile(shade, frames, luma))
     if CONF_LAMBDA in config:
         lambda_ = await cg.process_lambda(
             config[CONF_LAMBDA], [(XteinkDisplayRef, "it")], return_type=cg.void

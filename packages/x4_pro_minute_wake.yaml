@@ -63,8 +63,7 @@ script:
             id(start_display_when_ready).execute();
           });
           const auto now = id(ha_time).now();
-          id(clock_only_wake) = id(timer_wake) && (id(overview_on_panel) || id(offline_on_panel)) &&
-                               now.is_valid() && now.minute % 5 != 0;
+          id(clock_only_wake) = id(timer_wake) && now.minute % 5 != 0;
       - if:
           condition:
             lambda: return id(clock_only_wake);
@@ -112,11 +111,6 @@ script:
                 text:
                   format: "%02d:%02d"
                   args: [id(clock_minute_to_display) / 60, id(clock_minute_to_display) % 60]
-            - lvgl.label.update:
-                id: offline_clock_label
-                text:
-                  format: "%02d:%02d"
-                  args: [id(clock_minute_to_display) / 60, id(clock_minute_to_display) % 60]
 
   - id: clock_region_refresh
     then:
@@ -124,15 +118,9 @@ script:
       - if:
           condition:
             lambda: |-
-              return id(timer_wake) && (id(overview_on_panel) || id(offline_on_panel)) &&
-                     id(ha_time).now().is_valid() &&
-                     id(x4_display).select_region(636, 10, 76, 34, true);
+              return id(timer_wake) && id(ha_time).now().is_valid() &&
+                     id(x4_display).select_region(636, 10, 76, 34);
           then:
-            - if:
-                condition:
-                  lambda: return id(offline_on_panel);
-                then:
-                  - lvgl.widget.show: offline_overlay
             - script.execute: update_clock
             - script.execute: resume_panel
             - wait_until:
@@ -150,7 +138,7 @@ script:
                         const auto now = id(ha_time).now();
                         state.clock_updates++;
                         state.displayed_clock_minute = now.timestamp / 60;
-                        state.clock_bytes = id(x4_display).calibration_bytes();
+                        state.clock_bytes = id(x4_display).last_region_bytes();
                         state.clock_awake_ms = millis();
                         state.clock_minute = now.minute;
                         state.clock_commits = id(x4_display).update_count;
@@ -161,10 +149,6 @@ script:
                         id(overview_on_panel) = false;
                         id(offline_on_panel) = false;
                       }
-          else:
-            - lambda: |-
-                id(overview_on_panel) = false;
-                id(offline_on_panel) = false;
       - if:
           condition:
             lambda: return id(timer_wake);
@@ -195,29 +179,26 @@ script:
                   - std::isfinite(id(boiler_top_temperature).state)
                   - std::isfinite(id(boiler_bottom_temperature).state)
                   - id(boiler_mixer).has_state()
-            - lambda: |-
-                if (id(timer_wake)) id(network_poll_required) = false;
-            - if:
-                condition:
-                  lambda: return !id(timer_wake) || !id(offline_on_panel);
-                then:
-                  - lambda: |-
-                      id(sleep_page_update_count) = id(x4_display).update_count;
-                      id(overview_on_panel) = false;
-                      id(offline_visible) = true;
-                      id(display_resumed) = true;
-                      id(x4_display).select_region(0, 0, 800, 480, true);
-                  - lvgl.widget.show: offline_overlay
-                  - script.execute: update_clock
-                  - script.execute: resume_panel
             - if:
                 condition:
                   lambda: return id(timer_wake);
                 then:
+                  - lambda: |-
+                      id(network_poll_required) = false;
+                      const auto &state = esphome::xteink::panel_sleep_state();
+                      ESP_LOGI("boiler", "Clock before timeout: %u updates, minute %u, %u bytes, writes %u, Wi-Fi off %d",
+                               unsigned(state.clock_updates), unsigned(state.clock_minute), unsigned(state.clock_bytes),
+                               unsigned(state.clock_commits), state.clock_wifi_off);
                   - if:
                       condition:
-                        lambda: return id(offline_visible);
+                        lambda: return id(x4_display).select_region(280, 8, 432, 38);
                       then:
+                        - lambda: |-
+                            id(offline_visible) = true;
+                            id(display_resumed) = true;
+                        - lvgl.widget.show: offline_overlay
+                        - script.execute: update_clock
+                        - script.execute: resume_panel
                         - script.execute:
                             id: sleep_after_timer_refresh
                             overview: false

@@ -72,8 +72,7 @@ void Xteink::on_powerdown() {
     delay(1);
     return true;
   });
-  // Calibration's deep_sleep.prevent gate owns normal sleep scheduling. A
-  // forced shutdown must still never route through the stale ordinary driver.
+  // A forced shutdown can occur while a refresh owns the controller.
   if (this->display_.controllerSessionActive()) return;
   this->display_.deepSleep();
 
