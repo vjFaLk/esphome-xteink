@@ -35,6 +35,13 @@ relative luminance when available. The B/W pass drives changed endpoints.
 Each changed gray pixel gets the factory black reset and its lightening
 pulse in one LUT activation.
 
+**Calibration → Single Settle Area** compares the sparse **Pixel Mask**,
+the filled **Rectangle** of each update, or **Rectangle + Gray Margin**.
+The last option adds a second kernel of the configured **Update Margin**
+around the pixels selected for the gray pass. Added black and white
+neighbors receive their endpoint waveform. Added gray neighbors receive
+their target stable waveform. The boiler starts with **Rectangle**.
+
 **Dither Then Settle** uses the measured relative palette and pair curves.
 It prepares each affected pixel at its selected black or white endpoint,
 then applies the relative gray pulse. Connected gray areas from the old
@@ -68,10 +75,10 @@ release delay so LVGL can send the intermediate slider positions.
 **B-W Tuned** is the boiler's default Render Mode. It uses the boot
 temperature to select the factory table, restores panel power and clock,
 and applies Shake 1 frame × 2, White Ref. 5, Rest Trim +3, and Drive Trim 0.
-It uses Row Repair 30%, Rail Budget 160, Local Budget 40, and Burst Headroom
-80, with up to three passes. A frame that meets the budget with its original
-pixels uses one pass. The selected B/W recipe also fills the initial lab
-controls. **B-W Dither** selects the native B/W update path.
+Current firmware compares the ordered dither output against the displayed
+frame and drives only changed pixels on incremental updates. It uses Rail
+Budget 160 and Local Budget 40, with up to three passes. A split B/W
+update ends with a panel hold. **B-W Dither** selects the native B/W path.
 
 **Gray Dither** controls the pattern for preparing neighboring shades.
 **Column Stable** assigns the lighter shade by a repeating 16-column rank,
