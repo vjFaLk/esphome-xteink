@@ -26,6 +26,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   void set_grayscale_settle_time(uint32_t) {}
   void set_grayscale_windowed_upload(bool enabled) { windowed_upload_ = enabled; }
   bool set_rendering_mode(int mode);
+  void set_initial_rendering_mode(int mode) { requested_mode_ = mode; }
   void set_grayscale_update_margin(uint8_t pixels) {
     grayscale_update_margin_ = std::min<uint8_t>(pixels, 2);
   }
@@ -42,7 +43,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   void postpone_grayscale_settle() {}
   void prepare_page_change();
   // Select a one-shot absolute update in physical panel coordinates.
-  bool select_region(uint16_t x, uint16_t y, uint16_t width, uint16_t height);
+  bool select_region(uint16_t x, uint16_t y, uint16_t width, uint16_t height, bool bw_only = false);
   void clear_region();
   bool region_update_finished() const;
   bool region_update_succeeded() const;
@@ -220,6 +221,7 @@ class XteinkDisplay : public display::DisplayBuffer {
   enum class RegionState : uint8_t { Normal, Selected, Running, Complete, Failed };
   RegionState region_state_{RegionState::Normal};
   ::x4render::Rect selected_region_{};
+  bool region_bw_only_{false};
   bool driving_region_{false};
   bool windowed_upload_{false};
   bool render_demo_{false}, render_demo_marker_{false};

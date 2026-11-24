@@ -1,5 +1,11 @@
 # Boiler wake policy. The application supplies the Overview widgets, HA
 # inputs, encrypted API configuration and a boiler_ha_host substitution.
+esphome:
+  on_boot:
+    priority: 800
+    then:
+      - lambda: id(x4_display).begin_virtual_update();
+
 api:
   outgoing_connection:
     host: ${boiler_ha_host}
@@ -29,27 +35,18 @@ globals:
   - id: overview_on_panel
     type: bool
     initial_value: "false"
+  - id: offline_on_panel
+    type: bool
+    initial_value: "false"
+  - id: offline_visible
+    type: bool
+    initial_value: "false"
   - id: clock_minute_to_display
     type: uint16_t
     initial_value: "65535"
   - id: sleep_page_update_count
     type: uint64_t
     initial_value: "0"
-
-text_sensor:
-  - platform: template
-    name: "Display Wake Summary"
-    entity_category: diagnostic
-    update_interval: 1s
-    lambda: |-
-      const auto &state = esphome::xteink::panel_sleep_state();
-      char text[150];
-      snprintf(text, sizeof(text), "clock=%u minute=%u bytes=%u awake_ms=%u wifi_off=%u overview=%u ha_ready_ms=%u",
-               unsigned(state.clock_updates), unsigned(state.clock_minute),
-               unsigned(state.clock_bytes), unsigned(state.clock_awake_ms),
-               unsigned(state.clock_wifi_off), unsigned(state.scheduled_overviews),
-               unsigned(state.ha_ready_ms));
-      return {text};
 
 script:
   - id: boot_sequence
@@ -59,13 +56,14 @@ script:
           if (!id(timer_wake) && !id(user_requested_display)) state = {};
           if (id(timer_wake)) esphome::xteink::restore_scheduled_minute();
           id(overview_on_panel) = state.layout == 0x58344331U;
+          id(offline_on_panel) = state.layout == 0x58344F31U;
           state.layout = 0;
           id(ha_time).add_on_time_sync_callback([] {
             id(poll_time_ready) = true;
             id(start_display_when_ready).execute();
           });
           const auto now = id(ha_time).now();
-          id(clock_only_wake) = id(timer_wake) && id(overview_on_panel) &&
+          id(clock_only_wake) = id(timer_wake) && (id(overview_on_panel) || id(offline_on_panel)) &&
                                now.is_valid() && now.minute % 5 != 0;
       - if:
           condition:
@@ -114,6 +112,11 @@ script:
                 text:
                   format: "%02d:%02d"
                   args: [id(clock_minute_to_display) / 60, id(clock_minute_to_display) % 60]
+            - lvgl.label.update:
+                id: offline_clock_label
+                text:
+                  format: "%02d:%02d"
+                  args: [id(clock_minute_to_display) / 60, id(clock_minute_to_display) % 60]
 
   - id: clock_region_refresh
     then:
@@ -121,12 +124,17 @@ script:
       - if:
           condition:
             lambda: |-
-              return id(timer_wake) && id(overview_on_panel) && id(ha_time).now().is_valid() &&
-                     id(x4_display).select_region(636, 10, 76, 34);
+              return id(timer_wake) && (id(overview_on_panel) || id(offline_on_panel)) &&
+                     id(ha_time).now().is_valid() &&
+                     id(x4_display).select_region(636, 10, 76, 34, true);
           then:
+            - if:
+                condition:
+                  lambda: return id(offline_on_panel);
+                then:
+                  - lvgl.widget.show: offline_overlay
             - script.execute: update_clock
-            - lvgl.resume:
-            - lvgl.widget.redraw:
+            - script.execute: resume_panel
             - wait_until:
                 condition:
                   lambda: return !id(timer_wake) || id(x4_display).region_update_finished();
@@ -145,19 +153,28 @@ script:
                         state.clock_bytes = id(x4_display).calibration_bytes();
                         state.clock_awake_ms = millis();
                         state.clock_minute = now.minute;
+                        state.clock_commits = id(x4_display).update_count;
                         state.clock_wifi_off = id(wifi_client).is_disabled();
                         ESP_LOGI("boiler", "Clock region complete, %u bytes", unsigned(state.clock_bytes));
                       } else {
                         ESP_LOGW("boiler", "Clock region failed; next wake will recover Overview");
                         id(overview_on_panel) = false;
+                        id(offline_on_panel) = false;
                       }
           else:
-            - lambda: id(overview_on_panel) = false;
+            - lambda: |-
+                id(overview_on_panel) = false;
+                id(offline_on_panel) = false;
       - if:
           condition:
             lambda: return id(timer_wake);
           then:
             - script.execute: enter_scheduled_sleep
+
+  - id: resume_panel
+    then:
+      - lambda: id(x4_display).end_virtual_update();
+      - lvgl.resume:
 
   - id: connection_timeout
     mode: restart
@@ -171,19 +188,33 @@ script:
                 level: WARN
                 tag: boiler
                 format: "Home Assistant snapshot timed out"
+            - lambda: |-
+                if (id(timer_wake)) id(network_poll_required) = false;
+            - if:
+                condition:
+                  lambda: return !id(timer_wake) || !id(offline_on_panel);
+                then:
+                  - lambda: |-
+                      id(sleep_page_update_count) = id(x4_display).update_count;
+                      id(overview_on_panel) = false;
+                      id(offline_visible) = true;
+                      id(display_resumed) = true;
+                  - lvgl.widget.show: offline_overlay
+                  - script.execute: update_clock
+                  - script.execute: resume_panel
             - if:
                 condition:
                   lambda: return id(timer_wake);
                 then:
-                  - lambda: id(network_poll_required) = false;
-                  - wifi.disable:
-                  - script.execute: clock_region_refresh
-                else:
                   - if:
                       condition:
-                        lambda: return id(display_resumed);
+                        lambda: return id(offline_visible);
                       then:
-                        - lvgl.widget.show: offline_overlay
+                        - script.execute:
+                            id: sleep_after_timer_refresh
+                            overview: false
+                      else:
+                        - script.execute: enter_scheduled_sleep
 
   - id: start_display_when_ready
     mode: single
@@ -195,16 +226,24 @@ script:
                      id(poll_time_ready) && id(ha_time).now().is_valid() && id(battery_level).has_state() &&
                      std::isfinite(id(boiler_top_temperature).state) &&
                      std::isfinite(id(boiler_bottom_temperature).state) &&
-                     id(boiler_mixer).has_state();
+                     std::isfinite(id(bath_temperature).state) &&
+                     (id(bath_timer_state).state == "active" || id(bath_timer_state).state == "idle" ||
+                      id(bath_timer_state).state == "paused") && id(boiler_mixer).has_state();
           then:
             - lambda: |-
                 id(poll_completed) = true;
                 id(overview_on_panel) = false;
+                id(offline_on_panel) = false;
+                id(offline_visible) = false;
                 id(sleep_page_update_count) = id(x4_display).update_count;
                 auto &state = esphome::xteink::panel_sleep_state();
-                state.ha_ready_ms = millis();
-                ESP_LOGI("boiler", "HA snapshot ready at %u ms, RTC clock updates %u, latest %u bytes",
-                         unsigned(millis()), unsigned(state.clock_updates), unsigned(state.clock_bytes));
+                ESP_LOGI("boiler",
+                         "HA snapshot ready at %u ms, previous frames %u, clock updates %u, minute %u, %u bytes in %u ms, clock writes %u, Wi-Fi off %d, Overviews %u",
+                         unsigned(millis()), unsigned(id(sleep_page_update_count)),
+                         unsigned(state.clock_updates), unsigned(state.clock_minute),
+                         unsigned(state.clock_bytes), unsigned(state.clock_awake_ms), unsigned(state.clock_commits),
+                         state.clock_wifi_off,
+                         unsigned(state.scheduled_overviews));
             - script.stop: connection_timeout
             - lvgl.widget.hide: offline_overlay
             - script.execute: update_clock
@@ -214,15 +253,19 @@ script:
                   lambda: return !id(display_resumed);
                 then:
                   - lambda: id(display_resumed) = true;
-                  - lvgl.resume:
-                  - lvgl.widget.redraw:
+                  - script.execute: resume_panel
             - if:
                 condition:
                   lambda: return id(timer_wake);
                 then:
-                  - script.execute: sleep_after_timer_refresh
+                  - script.execute:
+                      id: sleep_after_timer_refresh
+                      overview: true
 
   - id: sleep_after_timer_refresh
+    mode: restart
+    parameters:
+      overview: bool
     then:
       - wait_until:
           condition:
@@ -235,8 +278,10 @@ script:
             lambda: return id(timer_wake);
           then:
             - lambda: |-
-                id(overview_on_panel) = id(x4_display).update_count > id(sleep_page_update_count) &&
-                                         id(x4_display).has_known_frame();
+                const bool complete = id(x4_display).update_count > id(sleep_page_update_count) &&
+                                      id(x4_display).has_known_frame();
+                id(overview_on_panel) = overview && complete;
+                id(offline_on_panel) = !overview && complete;
                 if (id(overview_on_panel)) esphome::xteink::panel_sleep_state().scheduled_overviews++;
             - lvgl.pause:
             - script.execute: enter_scheduled_sleep
@@ -268,7 +313,9 @@ script:
                 condition:
                   lambda: return id(display_resumed);
                 then:
-                  - lambda: id(overview_on_panel) = id(x4_display).has_known_frame();
+                  - lambda: |-
+                      id(overview_on_panel) = !id(offline_visible) && id(x4_display).has_known_frame();
+                      id(offline_on_panel) = id(offline_visible) && id(x4_display).has_known_frame();
       - lvgl.pause:
 
   - id: enter_scheduled_sleep
@@ -283,7 +330,7 @@ script:
                 auto &state = esphome::xteink::panel_sleep_state();
                 const bool valid = id(overview_on_panel) &&
                                    (!id(display_resumed) || id(x4_display).has_known_frame());
-                state.layout = valid ? 0x58344331U : 0;
+                state.layout = valid ? 0x58344331U : (id(offline_on_panel) ? 0x58344F31U : 0);
                 ESP_LOGI("boiler", "Sleeping at %u ms, Overview valid %d",
                          unsigned(millis()), valid);
             - deep_sleep.enter:

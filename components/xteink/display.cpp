@@ -49,19 +49,21 @@ void XteinkDisplay::prepare_page_change() {
   reset_touch_preview_();
   force_full_ = true;
 }
-bool XteinkDisplay::select_region(uint16_t x, uint16_t y, uint16_t width, uint16_t height) {
+bool XteinkDisplay::select_region(uint16_t x, uint16_t y, uint16_t width, uint16_t height, bool bw_only) {
   if (!ready_ || BoardConfig::ACTIVE.displayController != BoardConfig::DisplayController::UC8279 ||
       calibration_active_ || frozen_ || pending_ || render_demo_ ||
       tuned_state_ == TunedState::Held || !width || !height ||
       x + width > ::x4render::Width || y + height > ::x4render::Height) return false;
   reset_touch_preview_();
   selected_region_ = {x, y, width, height};
+  region_bw_only_ = bw_only;
   region_state_ = RegionState::Selected;
   dirty_ = true;
   return true;
 }
 void XteinkDisplay::clear_region() {
   selected_region_ = {};
+  region_bw_only_ = false;
   region_state_ = RegionState::Normal;
   force_full_ = true;
 }
@@ -288,15 +290,16 @@ bool XteinkDisplay::acquire_controller_(bool for_lab) {
 bool XteinkDisplay::begin_masked_refresh_(bool force, bool preview) {
   using namespace ::x4render;
   Settings settings;
-  const bool stable = requested_mode_ == 1;
-  const bool relative = requested_mode_ == 2;
+  const bool regional = region_state_ == RegionState::Selected;
+  const bool use_gray = !regional || !region_bw_only_;
+  const bool stable = use_gray && requested_mode_ == 1;
+  const bool relative = use_gray && requested_mode_ == 2;
   settings.mode = stable ? Mode::SingleSettle : relative ? Mode::DitherSettle : Mode::BwDither;
   settings.margin = gray_mode_() ? grayscale_update_margin_ : 0;
   factory_error_ = nullptr;
   settings.singleMask = single_mask_;
   if (relative) settings.palette = diagnostic_palette_();
   if (stable) settings.palette = measuredStablePalette(stable_luminance_);
-  const bool regional = region_state_ == RegionState::Selected;
   const bool planned = regional ? frames_.planRegion(selected_region_, settings)
       : preview ? frames_.planPreview(settings.margin) : frames_.plan(settings, force);
   if (!planned) return false;
@@ -316,7 +319,7 @@ bool XteinkDisplay::begin_masked_refresh_(bool force, bool preview) {
   }
   if (preview) bw = directBwPreviewBank();
   if (!preview && relative) gray = candidates(RelativePulses);
-  if (!masked_refresh_.plan(bw, gray, gray_mode_() ? 96 : 160, 40, regional || windowed_upload_)) {
+  if (!masked_refresh_.plan(bw, gray, stable || relative ? 96 : 160, 40, regional || windowed_upload_)) {
     frames_.phase = Phase::Idle;
     masked_result_ = "Source budget exceeds three zones";
     return false;

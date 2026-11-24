@@ -2,7 +2,7 @@
 
 The X4 Pro renderer uses the temperature-selected factory B/W table, the
 verified panel power and clock settings, and calibrated gray profiles.
-The boiler configuration adds Home Assistant controls through
+Calibration configurations can add Home Assistant controls through
 [x4_waveform_lab.yaml](../packages/x4_waveform_lab.yaml).
 
 ## Render modes
@@ -13,6 +13,12 @@ The boiler configuration adds Home Assistant controls through
 | B-W Dither | FreeInk's native B/W path. |
 | Single Settle | Five physical tones. Black/white pixels use the B/W pass. Each gray selector combines the factory black reset with its lightening dose. |
 | Dither Then Settle | Dithers between eight measured shades. The B/W pass constructs each gray's starting tone, then the relative gray pass settles it. The mask includes connected gray from both frames. |
+
+Set `rendering_mode` on the display in YAML to `bw`, `bw_tuned`,
+`single_settle`, or `dither_then_settle`. The gray modes require
+`grayscale: true` and the corresponding calibrated profile. Use 1-bit
+fonts for B/W text to avoid dithering glyph edges. The boiler derives font
+bit depth from its configured mode and uses 1-bit text for the clock.
 
 Mode and page changes rebuild the requested image. Full-width scan lines
 avoid the observed x≈752 column artifact. Windowed uploads are enabled by

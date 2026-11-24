@@ -267,7 +267,6 @@ script:
       - lambda: |-
           id(user_requested_display) = true;
           id(timer_wake) = false;
-      - script.stop: condition_display
       - script.stop: sleep_after_timer_refresh
       - lambda: id(x4_display).clear_region();
       - script.stop: interactive_sleep

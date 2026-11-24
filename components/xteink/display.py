@@ -14,6 +14,7 @@ XteinkDisplayRef = XteinkDisplay.operator("ref")
 
 CONF_DITHER_LUMINANCE = "dither_luminance"
 CONF_DITHER_CURVES = "dither_curves"
+CONF_RENDERING_MODE = "rendering_mode"
 CONF_STABLE_GRAY_FRAMES = "stable_gray_frames"
 CONF_STABLE_GRAY_LUMINANCE = "stable_gray_luminance"
 
@@ -55,6 +56,12 @@ GRAYSCALE_STRATEGIES = {
     "dither": 1,
     "adaptive": 2,
 }
+RENDERING_MODES = {
+    "bw": 0,
+    "single_settle": 1,
+    "dither_then_settle": 2,
+    "bw_tuned": 3,
+}
 
 CONFIG_SCHEMA = display.FULL_DISPLAY_SCHEMA.extend(
     {
@@ -65,6 +72,7 @@ CONFIG_SCHEMA = display.FULL_DISPLAY_SCHEMA.extend(
         ),
         cv.Optional(CONF_FULL_REFRESH_EVERY, default=0): cv.int_range(min=0),
         cv.Optional(CONF_GRAYSCALE, default=False): cv.boolean,
+        cv.Optional(CONF_RENDERING_MODE): cv.enum(RENDERING_MODES, lower=True),
         cv.Optional(CONF_GRAYSCALE_STRATEGY): cv.enum(
             GRAYSCALE_STRATEGIES, lower=True
         ),
@@ -101,6 +109,15 @@ def _final_validate(config):
         raise cv.Invalid("grayscale_strategy requires grayscale: true")
     if config.get(CONF_GRAYSCALE_WINDOWED_UPLOAD, False) and not config[CONF_GRAYSCALE]:
         raise cv.Invalid("grayscale_windowed_upload requires grayscale: true")
+    mode = config.get(CONF_RENDERING_MODE)
+    if mode in ("single_settle", "dither_then_settle") and not config[CONF_GRAYSCALE]:
+        raise cv.Invalid("gray rendering modes require grayscale: true")
+    if mode in ("single_settle", "dither_then_settle", "bw_tuned") and get_model() != "x4_pro":
+        raise cv.Invalid("this rendering mode requires the X4 Pro")
+    if mode == "dither_then_settle" and CONF_DITHER_LUMINANCE not in config:
+        raise cv.Invalid("dither_then_settle requires measured dither_luminance")
+    if mode == "single_settle" and CONF_STABLE_GRAY_LUMINANCE not in config:
+        raise cv.Invalid("single_settle requires a measured stable gray profile")
     if (CONF_STABLE_GRAY_FRAMES in config) != (CONF_STABLE_GRAY_LUMINANCE in config):
         raise cv.Invalid("stable_gray_frames and stable_gray_luminance must be set together")
     if CONF_DITHER_CURVES in config:
@@ -121,6 +138,8 @@ async def to_code(config):
     cg.add(var.set_refresh_mode(config[CONF_REFRESH_MODE]))
     cg.add(var.set_full_refresh_every(config[CONF_FULL_REFRESH_EVERY]))
     cg.add(var.set_grayscale(config[CONF_GRAYSCALE]))
+    if CONF_RENDERING_MODE in config:
+        cg.add(var.set_initial_rendering_mode(config[CONF_RENDERING_MODE]))
     cg.add(var.set_grayscale_windowed_upload(
         config.get(CONF_GRAYSCALE_WINDOWED_UPLOAD, config[CONF_GRAYSCALE])
     ))

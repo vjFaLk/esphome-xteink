@@ -16,8 +16,8 @@ struct PanelSleepState {
   uint32_t clock_bytes;
   uint32_t clock_awake_ms;
   uint32_t scheduled_overviews;
-  uint32_t ha_ready_ms;
   uint8_t clock_minute;
+  uint8_t clock_commits;
   bool clock_wifi_off;
 };
 
